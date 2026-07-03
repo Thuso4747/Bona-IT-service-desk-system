@@ -343,7 +343,6 @@ export default function ClientSimulator({
           <div className="space-y-4">
             {myTickets.length === 0 ? (
               <div className="text-center py-12 px-4">
-                <Database className="w-8 h-8 text-slate-300 mx-auto mb-2.5" />
                 <p className="text-sm font-medium text-slate-600">No tickets found</p>
                 <p className="text-xs text-slate-400 mt-1">
                   No tickets have been submitted under <span className="font-semibold text-slate-500">{senderEmail || 'this email address'}</span> yet.

@@ -483,18 +483,6 @@ export default function AgentDashboard({
               {/* Header */}
               <thead className="bg-[#fafafa] border-b border-slate-200 sticky top-0 text-[11px] font-mono text-slate-500 select-none z-10">
                 <tr>
-                  {/* Select Columns */}
-                  <th className="w-10 border-r border-slate-200 text-center px-2 py-1.5 bg-[#f1f5f9]/30">
-                    <input 
-                      type="checkbox" 
-                      onChange={activeTable === 'Ticket' ? handleToggleAllTickets : handleToggleAllUsers}
-                      checked={activeTable === 'Ticket' 
-                        ? selectedTicketRows.length === filteredTickets.length && filteredTickets.length > 0
-                        : selectedUserRows.length === filteredUsers.length && filteredUsers.length > 0}
-                      className="rounded accent-[#1b3bb6] scale-95" 
-                    />
-                  </th>
-                  
                   {/* Index Column */}
                   <th className="w-12 border-r border-slate-200 text-center px-2 py-1.5 bg-[#f1f5f9]/30">id <span className="text-slate-400">serial</span></th>
                   
@@ -530,16 +518,6 @@ export default function AgentDashboard({
                         className={`hover:bg-slate-50/70 transition-colors group cursor-pointer 
                           ${selectedTicketId === t.id ? 'bg-[#1b3bb6]/5 hover:bg-[#1b3bb6]/10' : ''}`}
                       >
-                        {/* Checkbox cell */}
-                        <td className="border-r border-slate-100 text-center px-2 py-2.5 bg-slate-50/20" onClick={(e) => e.stopPropagation()}>
-                          <input 
-                            type="checkbox"
-                            checked={selectedTicketRows.includes(t.id)}
-                            onChange={() => handleToggleTicketRow(t.id)}
-                            className="rounded accent-[#1b3bb6] scale-95" 
-                          />
-                        </td>
-                        
                         {/* Serial Id */}
                         <td className="border-r border-slate-100 text-center text-slate-400 px-2 py-2.5 font-mono text-xs bg-slate-50/10">
                           {t.id}
@@ -604,7 +582,7 @@ export default function AgentDashboard({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={8} className="text-center py-12 text-slate-400 font-light">
+                      <td colSpan={7} className="text-center py-12 text-slate-400 font-light">
                         No tickets matching search filter.
                       </td>
                     </tr>
@@ -618,16 +596,6 @@ export default function AgentDashboard({
                         className={`hover:bg-slate-50/70 transition-colors group cursor-pointer 
                           ${selectedUserId === u.id ? 'bg-[#1b3bb6]/5 hover:bg-[#1b3bb6]/10' : ''}`}
                       >
-                        {/* Checkbox cell */}
-                        <td className="border-r border-slate-100 text-center px-2 py-2.5 bg-slate-50/20" onClick={(e) => e.stopPropagation()}>
-                          <input 
-                            type="checkbox"
-                            checked={selectedUserRows.includes(u.id)}
-                            onChange={() => handleToggleUserRow(u.id)}
-                            className="rounded accent-[#1b3bb6] scale-95" 
-                          />
-                        </td>
-                        
                         {/* Serial Id */}
                         <td className="border-r border-slate-100 text-center text-slate-400 px-2 py-2.5 font-mono text-xs bg-slate-50/10">
                           {u.id}
@@ -831,8 +799,6 @@ export default function AgentDashboard({
               <div className="p-4 border-b border-slate-100">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <Table className="w-4 h-4 text-slate-500" />
-                    <span className="text-xs font-mono font-bold text-slate-400 uppercase">{activeTable} Inspector</span>
                   </div>
                   <button 
                     onClick={() => { setSelectedTicketId(null); setSelectedUserId(null); }}
