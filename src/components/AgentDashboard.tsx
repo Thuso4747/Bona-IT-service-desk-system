@@ -7,6 +7,30 @@ import {
 } from 'lucide-react';
 import { Ticket, UserAccount } from '../types';
 
+// Helpers to cleanly parse subject and body
+function getDisplayTitle(ticket: any): string {
+  if (!ticket) return 'Other';
+  const rawTitle = ticket.title || '';
+  if ((!rawTitle || rawTitle.toUpperCase() === 'OTHER') && ticket.description && ticket.description.startsWith('[Subject:')) {
+    const closeBracketIdx = ticket.description.indexOf(']');
+    if (closeBracketIdx !== -1) {
+      return ticket.description.substring(9, closeBracketIdx).trim();
+    }
+  }
+  return rawTitle || 'Other';
+}
+
+function cleanDescription(desc: string): string {
+  if (!desc) return '';
+  if (desc.startsWith('[Subject:')) {
+    const closeBracketIdx = desc.indexOf(']');
+    if (closeBracketIdx !== -1) {
+      return desc.substring(closeBracketIdx + 1).trim();
+    }
+  }
+  return desc;
+}
+
 interface AgentDashboardProps {
   onSignOut: () => void;
   currentUserEmail?: string;
@@ -14,6 +38,15 @@ interface AgentDashboardProps {
   setTickets: React.Dispatch<React.SetStateAction<Ticket[]>>;
   users: UserAccount[];
   setUsers: React.Dispatch<React.SetStateAction<UserAccount[]>>;
+  pendingStatusChanges: Record<number, 'CREATED' | 'PROCESSING' | 'COMPLETED'>;
+  setPendingStatusChanges: React.Dispatch<React.SetStateAction<Record<number, 'CREATED' | 'PROCESSING' | 'COMPLETED'>>>;
+  pendingUserRoleChanges: Record<number, 'CLIENT' | 'AGENT'>;
+  setPendingUserRoleChanges: React.Dispatch<React.SetStateAction<Record<number, 'CLIENT' | 'AGENT'>>>;
+  selectedTicketId: number | null;
+  setSelectedTicketId: (id: number | null) => void;
+  selectedUserId: number | null;
+  setSelectedUserId: (id: number | null) => void;
+  refreshData: () => Promise<void>;
 }
 
 export default function AgentDashboard({ 
@@ -22,7 +55,16 @@ export default function AgentDashboard({
   tickets,
   setTickets,
   users,
-  setUsers
+  setUsers,
+  pendingStatusChanges,
+  setPendingStatusChanges,
+  pendingUserRoleChanges,
+  setPendingUserRoleChanges,
+  selectedTicketId,
+  setSelectedTicketId,
+  selectedUserId,
+  setSelectedUserId,
+  refreshData
 }: AgentDashboardProps) {
   // Current active table in the Neon Console replica
   const [activeTable, setActiveTable] = useState<'Ticket' | 'User'>('Ticket');
@@ -32,10 +74,6 @@ export default function AgentDashboard({
 
   // State for search filter
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Selected row state for opening the custom slide-out detail inspector
-  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
   // Modal / Add Record States
   const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
@@ -61,12 +99,6 @@ export default function AgentDashboard({
   // Bulk selector states
   const [selectedTicketRows, setSelectedTicketRows] = useState<number[]>([]);
   const [selectedUserRows, setSelectedUserRows] = useState<number[]>([]);
-
-  // Track unsaved status updates for "save changes" button
-  const [pendingStatusChanges, setPendingStatusChanges] = useState<Record<number, 'CREATED' | 'PROCESSING' | 'COMPLETED'>>({});
-
-  // Track unsaved role updates for "save changes" button for users
-  const [pendingUserRoleChanges, setPendingUserRoleChanges] = useState<Record<number, 'CLIENT' | 'AGENT'>>({});
 
   // Filtering list based on search
   const filteredTickets = useMemo(() => {
@@ -258,33 +290,74 @@ export default function AgentDashboard({
     }
     setPendingStatusChanges({});
 
-    // Refresh tickets from backend
-    try {
-      const response = await fetch('/api/tickets');
-      const data = await response.json();
-      if (data.success && Array.isArray(data.tickets)) {
-        const mapped = data.tickets.map((t: any) => ({
-          id: t.id,
-          ticketRef: t.ticketRef,
-          title: t.title,
-          description: t.description,
-          status: t.status,
-          reportType: t.reportType,
-          submittedByEmail: t.submittedBy?.email,
-          submittedByName: t.submittedBy?.name,
-          creationDate: t.creationDate,
-          updatedDate: t.updatedDate
-        }));
-        setTickets(mapped);
-      }
-    } catch (e) {
-      console.warn("Failed to refresh tickets after update:", e);
-    }
+    // Refresh tickets from backend using the unified prop function
+    await refreshData();
   };
 
   const updateUserRole = (id: number, role: 'CLIENT' | 'AGENT') => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, role } : u));
     setPendingUserRoleChanges(prev => ({ ...prev, [id]: role }));
+  };
+
+  const handleSelectTicket = async (id: number) => {
+    // If switching or selecting another ticket, discard uncommitted pending status change
+    if (selectedTicketId) {
+      setPendingStatusChanges(prev => {
+        const copy = { ...prev };
+        delete copy[selectedTicketId];
+        return copy;
+      });
+    }
+    if (selectedUserId) {
+      setPendingUserRoleChanges(prev => {
+        const copy = { ...prev };
+        delete copy[selectedUserId];
+        return copy;
+      });
+    }
+    setSelectedTicketId(id);
+    setSelectedUserId(null);
+    await refreshData();
+  };
+
+  const handleSelectUser = async (id: number) => {
+    if (selectedTicketId) {
+      setPendingStatusChanges(prev => {
+        const copy = { ...prev };
+        delete copy[selectedTicketId];
+        return copy;
+      });
+    }
+    if (selectedUserId) {
+      setPendingUserRoleChanges(prev => {
+        const copy = { ...prev };
+        delete copy[selectedUserId];
+        return copy;
+      });
+    }
+    setSelectedUserId(id);
+    setSelectedTicketId(null);
+    await refreshData();
+  };
+
+  const handleCloseInspector = async () => {
+    if (selectedTicketId) {
+      setPendingStatusChanges(prev => {
+        const copy = { ...prev };
+        delete copy[selectedTicketId];
+        return copy;
+      });
+    }
+    if (selectedUserId) {
+      setPendingUserRoleChanges(prev => {
+        const copy = { ...prev };
+        delete copy[selectedUserId];
+        return copy;
+      });
+    }
+    setSelectedTicketId(null);
+    setSelectedUserId(null);
+    await refreshData();
   };
 
   const handleSaveUserChanges = async () => {
@@ -311,6 +384,7 @@ export default function AgentDashboard({
       }
     }
     setPendingUserRoleChanges({});
+    await refreshData();
   };
 
   // Delete handler with backend synchronization
@@ -370,11 +444,11 @@ export default function AgentDashboard({
         `}>
           
           {/* Brand header & Active Agent info */}
-          <div className="p-4 border-b border-slate-100/10 bg-[#1b3bb6]">
+          <div className="h-12 border-b border-slate-100/10 bg-[#1b3bb6] flex items-center px-4 shrink-0">
             <div className="flex items-center gap-2">
               <div>
                 <h1 className="text-xs font-bold text-white tracking-wider uppercase">Bona IT Agent Desk</h1>
-                <p className="text-[10px] text-blue-100/80 font-medium">Agent Workspace</p>
+                <p className="text-[9px] text-blue-100/80 font-medium -mt-0.5">Agent Workspace</p>
               </div>
             </div>
           </div>
@@ -476,26 +550,8 @@ export default function AgentDashboard({
               </div>
             </div>
 
-              {/* Save Changes and AI Companion block */}
+              {/* Save Changes and AI Companion block (Moved to detail inspector drawer) */}
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                {activeTable === 'Ticket' && Object.keys(pendingStatusChanges).length > 0 && (
-                  <button 
-                    onClick={handleSaveChanges}
-                    className="flex items-center gap-1.5 h-8 px-2 sm:px-3 bg-[#1b3bb6] hover:bg-[#152fa2] text-white rounded-lg text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer animate-fade-in"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Save<span className="hidden sm:inline"> changes</span></span>
-                  </button>
-                )}
-                {activeTable === 'User' && Object.keys(pendingUserRoleChanges).length > 0 && (
-                  <button 
-                    onClick={handleSaveUserChanges}
-                    className="flex items-center gap-1.5 h-8 px-2 sm:px-3 bg-[#1b3bb6] hover:bg-[#152fa2] text-white rounded-lg text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer animate-fade-in"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Save<span className="hidden sm:inline"> changes</span></span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -512,7 +568,7 @@ export default function AgentDashboard({
                   {activeTable === 'Ticket' ? (
                     <>
                       <th className="px-4 py-1.5 border-r border-slate-200 bg-white font-semibold text-slate-700">ticketRef <span className="text-slate-400 font-normal">text</span></th>
-                      <th className="px-4 py-1.5 border-r border-slate-200 bg-white font-semibold text-slate-700">reportType <span className="text-slate-400 font-normal">text</span></th>
+                      <th className="px-4 py-1.5 border-r border-slate-200 bg-white font-semibold text-slate-700">emailSubject / reportType <span className="text-slate-400 font-normal">text</span></th>
                       <th className="px-4 py-1.5 border-r border-slate-200 bg-white font-semibold text-slate-700">description <span className="text-slate-400 font-normal">text</span></th>
                       <th className="px-4 py-1.5 border-r border-slate-200 bg-white font-semibold text-slate-700">status <span className="text-slate-400 font-normal">TicketState</span></th>
                       <th className="px-4 py-1.5 border-r border-slate-200 bg-white font-semibold text-slate-700">creationDate <span className="text-slate-400 font-normal">timestamp</span></th>
@@ -537,7 +593,7 @@ export default function AgentDashboard({
                     filteredTickets.map((t) => (
                       <tr 
                         key={t.id} 
-                        onClick={() => { setSelectedTicketId(t.id); setSelectedUserId(null); }}
+                        onClick={() => handleSelectTicket(t.id)}
                         className={`hover:bg-slate-50/70 transition-colors group cursor-pointer 
                           ${selectedTicketId === t.id ? 'bg-[#1b3bb6]/5 hover:bg-[#1b3bb6]/10' : ''}`}
                       >
@@ -553,12 +609,12 @@ export default function AgentDashboard({
 
                         {/* reportType */}
                         <td className="px-4 py-2.5 border-r border-slate-100 font-medium text-slate-800 max-w-[180px] truncate">
-                          {t.reportType || "OTHER"}
+                          {getDisplayTitle(t)}
                         </td>
 
                         {/* Description */}
                         <td className="px-4 py-2.5 border-r border-slate-100 text-slate-500 max-w-[220px] truncate font-light">
-                          {t.description}
+                          {cleanDescription(t.description)}
                         </td>
 
                         {/* Status state tag */}
@@ -573,22 +629,6 @@ export default function AgentDashboard({
                                t.status?.toUpperCase() === 'PROCESSING' ? 'Processing' : 
                                t.status?.toUpperCase() === 'COMPLETED' ? 'Complete' : t.status}
                             </span>
-                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                              <button 
-                                onClick={() => updateTicketStatus(t.id, t.status === 'CREATED' ? 'PROCESSING' : t.status === 'PROCESSING' ? 'COMPLETED' : 'CREATED')}
-                                className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900"
-                                title="Cycle state status"
-                              >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteTicket(t.id)}
-                                className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600"
-                                title="Delete row record"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
                           </div>
                         </td>
 
@@ -615,7 +655,7 @@ export default function AgentDashboard({
                     filteredUsers.map((u) => (
                       <tr 
                         key={u.id}
-                        onClick={() => { setSelectedUserId(u.id); setSelectedTicketId(null); }}
+                        onClick={() => handleSelectUser(u.id)}
                         className={`hover:bg-slate-50/70 transition-colors group cursor-pointer 
                           ${selectedUserId === u.id ? 'bg-[#1b3bb6]/5 hover:bg-[#1b3bb6]/10' : ''}`}
                       >
@@ -650,22 +690,6 @@ export default function AgentDashboard({
                             <span className="px-2 py-0.5 text-[10px] font-mono font-bold tracking-wider rounded-md border bg-slate-50 border-slate-200 text-slate-600">
                               {u.role}
                             </span>
-                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                              <button 
-                                onClick={() => updateUserRole(u.id, u.role === 'CLIENT' ? 'AGENT' : 'CLIENT')}
-                                className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900"
-                                title="Change role"
-                              >
-                                <User className="w-3.5 h-3.5" />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600"
-                                title="Delete user"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
                           </div>
                         </td>
                       </tr>
@@ -713,10 +737,10 @@ export default function AgentDashboard({
                           {t.ticketRef}
                         </div>
                         <h4 className="font-semibold text-slate-800 text-[13px]">
-                          {t.reportType || "OTHER"}
+                          {getDisplayTitle(t)}
                         </h4>
                         <p className="text-slate-500 text-xs line-clamp-2 font-light">
-                          {t.description}
+                          {cleanDescription(t.description)}
                         </p>
                       </div>
 
@@ -821,10 +845,17 @@ export default function AgentDashboard({
             <div className="absolute top-0 right-0 h-full w-full sm:w-80 bg-white border-l border-slate-200 shadow-2xl z-20 flex flex-col justify-between transition-transform animate-[slideIn_0.2s_ease-out]">
               <div className="p-4 border-b border-slate-100">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                  </div>
+                  {activeTicketInspector ? (
+                    <span className="text-xs font-bold font-mono text-[#1b3bb6] bg-blue-50 px-2.5 py-1 rounded border border-blue-100/60">
+                      {activeTicketInspector.ticketRef}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-100/60">
+                      {activeUserInspector?.userRef || activeUserInspector?.email || `User #${activeUserInspector?.id}`}
+                    </span>
+                  )}
                   <button 
-                    onClick={() => { setSelectedTicketId(null); setSelectedUserId(null); }}
+                    onClick={handleCloseInspector}
                     className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded"
                   >
                     <X className="w-4 h-4" />
@@ -833,12 +864,12 @@ export default function AgentDashboard({
 
                 {activeTicketInspector ? (
                   <>
-                    <h3 className="text-sm font-bold text-slate-900 font-mono">{activeTicketInspector.ticketRef}</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Database Record Serial id: {activeTicketInspector.id}</p>
+                    <h3 className="text-sm font-bold text-slate-900">Ticket Inspector</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Ticket Serial id: {activeTicketInspector.id}</p>
                   </>
                 ) : (
                   <>
-                    <h3 className="text-sm font-bold text-slate-900 font-mono">{activeUserInspector?.userRef}</h3>
+                    <h3 className="text-sm font-bold text-slate-900">User Inspector</h3>
                     <p className="text-[11px] text-slate-400 mt-0.5">Database Record Serial id: {activeUserInspector?.id}</p>
                   </>
                 )}
@@ -852,7 +883,7 @@ export default function AgentDashboard({
                       <span className="text-slate-400 font-semibold tracking-wider uppercase block text-[9px]">Title</span>
                       <input 
                         type="text" 
-                        value={activeTicketInspector.title}
+                        value={getDisplayTitle(activeTicketInspector)}
                         onChange={(e) => {
                           const val = e.target.value;
                           setTickets(tickets.map(t => t.id === activeTicketInspector.id ? { ...t, title: val } : t));
@@ -864,8 +895,8 @@ export default function AgentDashboard({
                     <div className="space-y-1">
                       <span className="text-slate-400 font-semibold tracking-wider uppercase block text-[9px]">Description</span>
                       <textarea 
-                        rows={5}
-                        value={activeTicketInspector.description}
+                        rows={4}
+                        value={cleanDescription(activeTicketInspector.description)}
                         onChange={(e) => {
                           const val = e.target.value;
                           setTickets(tickets.map(t => t.id === activeTicketInspector.id ? { ...t, description: val } : t));
@@ -891,6 +922,8 @@ export default function AgentDashboard({
                         ))}
                       </div>
                     </div>
+
+
                   </>
                 )}
 
@@ -959,8 +992,114 @@ export default function AgentDashboard({
                 )}
               </div>
 
-              {/* Drawer footer delete */}
-              <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-2">
+              {/* Drawer footer delete and save */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-col gap-2">
+                {activeTicketInspector && pendingStatusChanges[activeTicketInspector.id] !== undefined && (
+                  <button 
+                    onClick={async () => {
+                      const pendingStatus = pendingStatusChanges[activeTicketInspector.id];
+                      // 1. Save status change first
+                      if (pendingStatus !== undefined) {
+                        try {
+                          await fetch('/api/tickets/updates', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              ticketId: activeTicketInspector.id,
+                              newStatus: pendingStatus
+                            })
+                          });
+                        } catch (e) {
+                          console.warn("Status patch failed:", e);
+                        }
+                        // Clear pending change
+                        setPendingStatusChanges(prev => {
+                          const copy = { ...prev };
+                          delete copy[activeTicketInspector.id];
+                          return copy;
+                        });
+                      }
+
+                      // 2. Also update other ticket fields (title & description)
+                      try {
+                        await fetch(`/api/tickets/${activeTicketInspector.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            title: activeTicketInspector.title,
+                            description: activeTicketInspector.description
+                          })
+                        });
+                      } catch (e) {
+                        console.warn("Details patch failed:", e);
+                      }
+
+                      // 3. Force database sync & table update
+                      await refreshData();
+
+                      // 4. Close drawer after saving
+                      setSelectedTicketId(null);
+                    }}
+                    className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
+                  >
+                    <span>Save Changes</span>
+                  </button>
+                )}
+
+                {activeUserInspector && pendingUserRoleChanges[activeUserInspector.id] !== undefined && (
+                  <button 
+                    onClick={async () => {
+                      const pendingRole = pendingUserRoleChanges[activeUserInspector.id];
+                      // 1. Save role change first
+                      if (pendingRole !== undefined) {
+                        try {
+                          await fetch('/api/users/role', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              userId: activeUserInspector.id,
+                              role: pendingRole
+                            })
+                          });
+                        } catch (e) {
+                          console.warn("Role patch failed:", e);
+                        }
+                        // Clear pending change
+                        setPendingUserRoleChanges(prev => {
+                          const copy = { ...prev };
+                          delete copy[activeUserInspector.id];
+                          return copy;
+                        });
+                      }
+
+                      // 2. Also save other user fields (name, email, password)
+                      try {
+                        await fetch(`/api/users/${activeUserInspector.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            name: activeUserInspector.name,
+                            email: activeUserInspector.email,
+                            password: activeUserInspector.password,
+                            role: activeUserInspector.role
+                          })
+                        });
+                      } catch (e) {
+                        console.warn("User details patch failed:", e);
+                      }
+
+                      // 3. Force database sync & table update
+                      await refreshData();
+
+                      // 4. Close drawer after saving
+                      setSelectedUserId(null);
+                    }}
+                    className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
+                  >
+                    <span>Save Changes</span>
+                  </button>
+                )}
+
                 <button 
                   onClick={() => {
                     if (activeTicketInspector) {
@@ -969,9 +1108,8 @@ export default function AgentDashboard({
                       handleDeleteUser(activeUserInspector.id);
                     }
                   }}
-                  className="flex-1 py-2 border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-lg text-center flex items-center justify-center gap-1.5 cursor-pointer text-xs transition-colors"
+                  className="w-full py-2 border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
                   <span>Delete Record Row</span>
                 </button>
               </div>

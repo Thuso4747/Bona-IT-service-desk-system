@@ -24,6 +24,77 @@ export default function App() {
   // Lifted state for User Accounts
   const [users, setUsers] = useState<UserAccount[]>([]);
 
+  // Lifted pending changes states to prevent background poll overwrites
+  const [pendingStatusChanges, setPendingStatusChanges] = useState<Record<number, 'CREATED' | 'PROCESSING' | 'COMPLETED'>>({});
+  const [pendingUserRoleChanges, setPendingUserRoleChanges] = useState<Record<number, 'CLIENT' | 'AGENT'>>({});
+
+  // Selection states lifted from AgentDashboard to allow safe preservation of current ticket/user properties
+  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+
+  // Use refs to access latest pending changes and current selections inside polling setInterval to avoid stale closures
+  const pendingStatusChangesRef = React.useRef(pendingStatusChanges);
+  pendingStatusChangesRef.current = pendingStatusChanges;
+
+  const pendingUserRoleChangesRef = React.useRef(pendingUserRoleChanges);
+  pendingUserRoleChangesRef.current = pendingUserRoleChanges;
+
+  const selectedTicketIdRef = React.useRef(selectedTicketId);
+  selectedTicketIdRef.current = selectedTicketId;
+
+  const selectedUserIdRef = React.useRef(selectedUserId);
+  selectedUserIdRef.current = selectedUserId;
+
+  const ticketsRef = React.useRef(tickets);
+  ticketsRef.current = tickets;
+
+  const usersRef = React.useRef(users);
+  usersRef.current = users;
+
+  // Single-use helper to completely refresh tables after a save (clears active transitions with latest DB state)
+  const refreshData = async () => {
+    try {
+      const response = await fetch('/api/tickets');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.tickets)) {
+        const mapped = data.tickets.map((t: any) => ({
+          id: t.id,
+          ticketRef: t.ticketRef,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          reportType: t.reportType,
+          submittedByEmail: t.submittedBy?.email,
+          submittedByName: t.submittedBy?.name,
+          creationDate: t.creationDate,
+          updatedDate: t.updatedDate,
+          trackingToken: t.trackingToken
+        }));
+        setTickets(mapped);
+      }
+    } catch (e) {
+      console.warn("Failed to refresh tickets:", e);
+    }
+
+    try {
+      const response = await fetch('/api/users');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.users)) {
+        const mapped = data.users.map((u: any) => ({
+          id: u.id,
+          userRef: u.userRef,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          password: u.password
+        }));
+        setUsers(mapped);
+      }
+    } catch (e) {
+      console.warn("Failed to refresh users:", e);
+    }
+  };
+
   // Sync tickets and users with Postgres backend upon mount and poll for real-time changes
   useEffect(() => {
     const fetchBackendData = async () => {
@@ -31,18 +102,38 @@ export default function App() {
         const response = await fetch('/api/tickets');
         const data = await response.json();
         if (data.success && Array.isArray(data.tickets)) {
-          const mapped = data.tickets.map((t: any) => ({
-            id: t.id,
-            ticketRef: t.ticketRef,
-            title: t.title,
-            description: t.description,
-            status: t.status,
-            reportType: t.reportType,
-            submittedByEmail: t.submittedBy?.email,
-            submittedByName: t.submittedBy?.name,
-            creationDate: t.creationDate,
-            updatedDate: t.updatedDate
-          }));
+          const mapped = data.tickets.map((t: any) => {
+            const localTicket = ticketsRef.current.find((lt: any) => lt.id === t.id);
+            // If ticket is currently selected (or has pending status changes), preserve active client-side title/description
+            if (localTicket && (pendingStatusChangesRef.current[t.id] !== undefined || selectedTicketIdRef.current === t.id)) {
+              return {
+                id: t.id,
+                ticketRef: t.ticketRef,
+                title: localTicket.title,
+                description: localTicket.description,
+                status: pendingStatusChangesRef.current[t.id] !== undefined ? pendingStatusChangesRef.current[t.id] : localTicket.status,
+                reportType: t.reportType,
+                submittedByEmail: t.submittedBy?.email,
+                submittedByName: t.submittedBy?.name,
+                creationDate: t.creationDate,
+                updatedDate: t.updatedDate,
+                trackingToken: t.trackingToken
+              };
+            }
+            return {
+              id: t.id,
+              ticketRef: t.ticketRef,
+              title: t.title,
+              description: t.description,
+              status: pendingStatusChangesRef.current[t.id] !== undefined ? pendingStatusChangesRef.current[t.id] : t.status,
+              reportType: t.reportType,
+              submittedByEmail: t.submittedBy?.email,
+              submittedByName: t.submittedBy?.name,
+              creationDate: t.creationDate,
+              updatedDate: t.updatedDate,
+              trackingToken: t.trackingToken
+            };
+          });
           setTickets(mapped);
         }
       } catch (e) {
@@ -53,14 +144,28 @@ export default function App() {
         const response = await fetch('/api/users');
         const data = await response.json();
         if (data.success && Array.isArray(data.users)) {
-          const mapped = data.users.map((u: any) => ({
-            id: u.id,
-            userRef: u.userRef,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            password: u.password
-          }));
+          const mapped = data.users.map((u: any) => {
+            const localUser = usersRef.current.find((lu: any) => lu.id === u.id);
+            // If user row is actively selected, preserve name, email, and password during input session
+            if (localUser && (pendingUserRoleChangesRef.current[u.id] !== undefined || selectedUserIdRef.current === u.id)) {
+              return {
+                id: u.id,
+                userRef: u.userRef,
+                name: localUser.name,
+                email: localUser.email,
+                role: pendingUserRoleChangesRef.current[u.id] !== undefined ? pendingUserRoleChangesRef.current[u.id] : localUser.role,
+                password: localUser.password
+              };
+            }
+            return {
+              id: u.id,
+              userRef: u.userRef,
+              name: u.name,
+              email: u.email,
+              role: pendingUserRoleChangesRef.current[u.id] !== undefined ? pendingUserRoleChangesRef.current[u.id] : u.role,
+              password: u.password
+            };
+          });
           setUsers(mapped);
         }
       } catch (e) {
@@ -174,6 +279,15 @@ export default function App() {
           setTickets={setTickets}
           users={users}
           setUsers={setUsers}
+          pendingStatusChanges={pendingStatusChanges}
+          setPendingStatusChanges={setPendingStatusChanges}
+          pendingUserRoleChanges={pendingUserRoleChanges}
+          setPendingUserRoleChanges={setPendingUserRoleChanges}
+          selectedTicketId={selectedTicketId}
+          setSelectedTicketId={setSelectedTicketId}
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
+          refreshData={refreshData}
         />
       )}
 

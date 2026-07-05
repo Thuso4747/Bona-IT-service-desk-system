@@ -9,6 +9,9 @@ export interface Ticket {
   submittedByName?: string;
   creationDate?: string;
   updatedDate?: string;
+  trackingToken?: string;
+  assignedTo?: number | null;
+  resolvedBy?: number | null;
 }
 
 export interface UserAccount {

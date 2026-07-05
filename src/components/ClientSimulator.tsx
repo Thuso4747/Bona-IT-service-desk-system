@@ -12,6 +12,30 @@ interface ClientSimulatorProps {
   onSignOut?: () => void;
 }
 
+// Helpers to cleanly parse subject and body, eliminating any "OTHER" fallback confusion for older / legacy formats
+function getDisplayTitle(ticket: any): string {
+  if (!ticket) return 'Other';
+  const rawTitle = ticket.title || '';
+  if ((!rawTitle || rawTitle.toUpperCase() === 'OTHER') && ticket.description && ticket.description.startsWith('[Subject:')) {
+    const closeBracketIdx = ticket.description.indexOf(']');
+    if (closeBracketIdx !== -1) {
+      return ticket.description.substring(9, closeBracketIdx).trim();
+    }
+  }
+  return rawTitle || 'Other';
+}
+
+function cleanDescription(desc: string): string {
+  if (!desc) return '';
+  if (desc.startsWith('[Subject:')) {
+    const closeBracketIdx = desc.indexOf(']');
+    if (closeBracketIdx !== -1) {
+      return desc.substring(closeBracketIdx + 1).trim();
+    }
+  }
+  return desc;
+}
+
 export default function ClientSimulator({
   tickets,
   setTickets,
@@ -126,8 +150,10 @@ export default function ClientSimulator({
         body: JSON.stringify({
           name: senderName.trim(),
           email: senderEmail.trim(),
-          issue: `[Subject: ${subject}] ${body.trim()}`,
-          reportType: "OTHER"
+          title: subject.trim(),
+          issue: body.trim(),
+          description: body.trim(),
+          reportType: subject.toUpperCase()
         })
       });
 
@@ -165,9 +191,6 @@ export default function ClientSimulator({
 
         setIsSubmittedSuccessfully(true);
         setHasSubmitted(true);
-        if (data.token) {
-          setTrackingTokenInput(data.token);
-        }
         setTimeout(() => setIsSubmittedSuccessfully(false), 2000);
 
         // Reset non-user fields
@@ -323,83 +346,6 @@ export default function ClientSimulator({
 
         {activeTab === 'tickets' && (
           <div className="space-y-6">
-            {/* Embedded Quick Track by Token Feature */}
-            {hasSubmitted && (
-              <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3 shadow-sm animate-fade-in">
-                <div className="flex items-center gap-1.5 text-slate-700">
-                  <Search className="w-4 h-4 text-[#1b3bb6]" />
-                  <span className="text-xs font-bold uppercase tracking-wider">TRACK BY TOKEN</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Paste tracking token (UUID) here..."
-                    value={trackingTokenInput}
-                    onChange={(e) => setTrackingTokenInput(e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[#1b3bb6] focus:ring-1 focus:ring-[#1b3bb6]/10 bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCheckStatus}
-                    disabled={isCheckingStatus}
-                    className="bg-[#1b3bb6] hover:bg-[#152fa2] text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-55 whitespace-nowrap transition-all duration-150"
-                  >
-                    {isCheckingStatus ? "Checking..." : "Track"}
-                  </button>
-                </div>
-
-                {trackedTicket && (
-                  <div className="mt-3 border-t border-slate-200/60 pt-3 space-y-2.5 bg-white p-3 rounded-lg border border-slate-100 animate-fade-in">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tracked Ticket Live Status</span>
-                      <button
-                        type="button"
-                        onClick={() => setTrackedTicket(null)}
-                        className="text-slate-400 hover:text-slate-600 text-xs font-medium cursor-pointer"
-                      >
-                        Clear Preview
-                      </button>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-slate-700">Ticket Ref:</span>
-                      <span className="font-mono font-bold text-[#1b3bb6] bg-blue-50 px-2 py-0.5 rounded border border-blue-100/60">{trackedTicket.ticketRef}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-slate-700">Live Status:</span>
-                      <span className={`font-bold ${
-                        trackedTicket.status === 'COMPLETED' ? 'text-emerald-600' :
-                        trackedTicket.status === 'PROCESSING' ? 'text-amber-600' : 'text-blue-600'
-                      }`}>
-                        {trackedTicket.status}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-slate-700">Subject:</span>
-                      <span className="text-slate-800 font-semibold">{trackedTicket.title}</span>
-                    </div>
-                    <div className="text-xs space-y-1">
-                      <span className="font-bold text-slate-700 block">Description / Content:</span>
-                      <p className="text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-100 text-[11px] max-h-36 overflow-y-auto">
-                        {trackedTicket.description}
-                      </p>
-                    </div>
-                    {trackedTicket.submittedBy && (
-                      <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-2 text-[11px]">
-                        <span className="font-bold text-slate-500">Submitted By:</span>
-                        <span className="text-slate-500 font-medium">{trackedTicket.submittedBy.name} ({trackedTicket.submittedBy.email})</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {trackError && (
-                  <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 p-2.5 rounded-lg">
-                    {trackError}
-                  </div>
-                )}
-              </div>
-            )}
-
             {myTickets.length === 0 ? (
               <div className="text-center py-12 px-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                 <p className="text-sm font-medium text-slate-600">No tickets found</p>
@@ -439,7 +385,7 @@ export default function ClientSimulator({
                             </div>
                             <div>
                               <span className="font-bold text-slate-700">Email Subject:</span>{' '}
-                              <span className="text-slate-800 font-semibold">{ticket.title}</span>
+                              <span className="text-slate-800 font-semibold">{getDisplayTitle(ticket)}</span>
                             </div>
                           </div>
                         </div>
@@ -454,7 +400,7 @@ export default function ClientSimulator({
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-slate-700">Email Content:</span>
                         <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg">
-                          {ticket.description}
+                          {cleanDescription(ticket.description)}
                         </p>
                       </div>
                     </div>

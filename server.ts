@@ -206,6 +206,8 @@ app.get("/api/tickets", async (req, res) => {
         t.status,
         t."creationDate",
         t."updatedDate",
+        t."assignedTo",
+        t."resolvedBy",
         u.id as "userId",
         u.name as "userName",
         u.email as "userEmail",
@@ -226,6 +228,8 @@ app.get("/api/tickets", async (req, res) => {
       status: row.status,
       creationDate: row.creationDate,
       updatedDate: row.updatedDate,
+      assignedTo: row.assignedTo,
+      resolvedBy: row.resolvedBy,
       submittedBy: {
         id: row.userId,
         name: row.userName,
@@ -252,6 +256,33 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+// Helper to dynamically extract ticket subject and reportType from mail description when appropriate
+function extractSubjectAndReportType(title: string | undefined, reportType: string | undefined, description: string) {
+  let finalTitle = (title || "").trim();
+  let finalReportType = (reportType || "").trim();
+
+  // If the description starts with [Subject: ...] and we don't have a valid custom subject (or it is generic "OTHER")
+  if (description && description.startsWith("[Subject:")) {
+    const closeBracketIdx = description.indexOf("]");
+    if (closeBracketIdx !== -1) {
+      const extracted = description.substring(9, closeBracketIdx).trim();
+      if (extracted) {
+        if (!finalTitle || finalTitle.toUpperCase() === "OTHER") {
+          finalTitle = extracted;
+        }
+        if (!finalReportType || finalReportType.toUpperCase() === "OTHER") {
+          finalReportType = extracted.toUpperCase();
+        }
+      }
+    }
+  }
+
+  if (!finalTitle) finalTitle = "Other";
+  if (!finalReportType) finalReportType = "OTHER";
+
+  return { title: finalTitle, reportType: finalReportType };
+}
+
 // 4. POST /api/tickets - Main customer submission endpoint (matches provided Next.js code)
 app.post("/api/tickets", async (req, res) => {
   try {
@@ -259,8 +290,13 @@ app.post("/api/tickets", async (req, res) => {
     const name = body.name?.trim();
     const email = body.email?.trim();
     const description = (body.description || body.issue || "").trim();
-    const title = (body.title || body.subject || body.reportType || "Other").trim();
-    const reportType = (body.reportType || title || "OTHER").toUpperCase();
+    
+    // Auto-resolve title and reportType from description if they are generic or empty
+    let { title, reportType } = extractSubjectAndReportType(
+      body.title || body.subject || body.reportType,
+      body.reportType,
+      description
+    );
 
     if (!name || !email || !description) {
       return res.status(400).json({ 
@@ -331,8 +367,13 @@ app.post("/api/webhooks/tickets", async (req, res) => {
     const name = body.name?.trim();
     const email = body.email?.trim();
     const description = (body.description || body.issue || "").trim();
-    const title = (body.title || body.subject || body.reportType || "Other").trim();
-    const reportType = (body.reportType || title || "OTHER").toUpperCase();
+    
+    // Auto-resolve title and reportType from description if they are generic or empty
+    let { title, reportType } = extractSubjectAndReportType(
+      body.title || body.subject || body.reportType,
+      body.reportType,
+      description
+    );
 
     if (!name || !email || !description) {
       return res.status(400).json({ 
@@ -391,22 +432,32 @@ app.post("/api/webhooks/tickets", async (req, res) => {
   }
 });
 
-// 6. GET /api/tickets/status/:token and /api/tickets/stats/:token - Get ticket stats by tracking token (matches provided Next.js code)
+// 6. GET /api/tickets/status/:token and /api/tickets/stats/:token - Get ticket stats by tracking token or ticket reference (matches provided Next.js code)
 app.get(["/api/tickets/status/:token", "/api/tickets/stats/:token"], async (req, res) => {
   try {
     const { token } = req.params;
+    const cleanToken = (token || "").trim();
+
+    // Normalize input to see if it is a ticket reference:
+    // Remove all spaces, e.g. "TKT - ABC" -> "TKT-ABC"
+    let normalizedRef = cleanToken.replace(/\s+/g, '').toUpperCase();
+    
+    // If it doesn't start with "TKT-" but is an 8-char hex, pre-pend "TKT-"
+    if (!normalizedRef.startsWith("TKT-") && normalizedRef.length === 8 && /^[0-9A-F]+$/.test(normalizedRef)) {
+      normalizedRef = "TKT-" + normalizedRef;
+    }
 
     const result = await pool.query(`
       SELECT t.*, u.name as "submittedUserName", u.email as "submittedUserEmail"
       FROM "Ticket" t
       JOIN "User" u ON t."submittedBy" = u.id
-      WHERE t."trackingToken" = $1
-    `, [token]);
+      WHERE t."trackingToken" = $1 OR UPPER(t."ticketRef") = $1 OR UPPER(t."ticketRef") = $2
+    `, [cleanToken, normalizedRef]);
 
     const ticket = result.rows[0];
 
     if (!ticket) {
-      return res.status(404).json({ success: false, message: "Ticket not found" });
+      return res.status(404).json({ success: false, message: "Ticket not found with that token or reference." });
     }
 
     res.json({
@@ -497,6 +548,41 @@ app.patch(["/api/tickets/updates", "/api/updates"], async (req, res) => {
   } catch (error: any) {
     console.error("Update ticket error:", error);
     res.status(500).json({ success: false, message: error.message || "Failed to update ticket" });
+  }
+});
+
+// 7.5. PATCH /api/tickets/:id - Update ticket details (title, description, etc.)
+app.patch("/api/tickets/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description } = req.body;
+    
+    let finalTitle = (title || "").trim();
+    let finalReportType = undefined;
+    
+    if (description && (!finalTitle || finalTitle.toUpperCase() === 'OTHER') && description.startsWith('[Subject:')) {
+      const closeBracketIdx = description.indexOf(']');
+      if (closeBracketIdx !== -1) {
+        finalTitle = description.substring(9, closeBracketIdx).trim();
+        finalReportType = finalTitle.toUpperCase();
+      }
+    } else if (finalTitle) {
+      finalReportType = finalTitle.toUpperCase();
+    }
+
+    await pool.query(
+      `UPDATE "Ticket" 
+       SET title = COALESCE($1, title), 
+           description = COALESCE($2, description),
+           "reportType" = COALESCE($3, "reportType"),
+           "updatedDate" = NOW()
+       WHERE id = $4`,
+      [finalTitle || null, description || null, finalReportType || null, Number(id)]
+    );
+    res.json({ success: true, message: "Ticket details updated successfully" });
+  } catch (error: any) {
+    console.error("Update ticket details error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
