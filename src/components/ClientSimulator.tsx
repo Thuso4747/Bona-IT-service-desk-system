@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Ticket, UserAccount } from '../types';
-import { Mail, CheckCircle, ArrowRight, Database, Sparkles, LayoutDashboard, ChevronDown, Clock, RefreshCw, AlertCircle, ArrowLeft, LogOut } from 'lucide-react';
+import { Mail, CheckCircle, ArrowRight, Database, Sparkles, LayoutDashboard, ChevronDown, Clock, RefreshCw, AlertCircle, ArrowLeft, LogOut, Search } from 'lucide-react';
 
 interface ClientSimulatorProps {
   tickets: Ticket[];
@@ -44,14 +44,27 @@ export default function ClientSimulator({
 
   // Success indicator state
   const [isSubmittedSuccessfully, setIsSubmittedSuccessfully] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'submit' | 'tickets'>('submit');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [trackingTokenInput, setTrackingTokenInput] = useState('');
+  const [trackedTicket, setTrackedTicket] = useState<any>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [trackError, setTrackError] = useState('');
 
   // Filter tickets belonging to the current client email
   const myTickets = tickets.filter(t => 
     t.submittedByEmail?.toLowerCase() === senderEmail.trim().toLowerCase()
   );
+
+  // Show track-by-token feature if they have any tickets in their history
+  useEffect(() => {
+    if (myTickets.length > 0) {
+      setHasSubmitted(true);
+    }
+  }, [myTickets.length]);
 
   const handleRefreshTickets = async () => {
     setIsRefreshing(true);
@@ -78,9 +91,29 @@ export default function ClientSimulator({
     }
   };
 
+  const handleCheckStatus = async () => {
+    if (!trackingTokenInput.trim()) return;
+    setIsCheckingStatus(true);
+    setTrackError('');
+    setTrackedTicket(null);
+    try {
+      const response = await fetch(`/api/tickets/status/${trackingTokenInput.trim()}`);
+      const data = await response.json();
+      if (data.success) {
+        setTrackedTicket(data);
+      } else {
+        setTrackError(data.message || "Ticket not found for this token.");
+      }
+    } catch (e) {
+      setTrackError("Failed to check ticket status. Please check your connection.");
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!senderName.trim() || !senderEmail.trim() || !subject.trim() || !body.trim()) {
+    if (!senderName.trim() || !senderEmail.trim() || !body.trim()) {
       return;
     }
 
@@ -93,10 +126,8 @@ export default function ClientSimulator({
         body: JSON.stringify({
           name: senderName.trim(),
           email: senderEmail.trim(),
-          title: subject.trim(),
-          description: body.trim(),
-          issue: body.trim(),
-          reportType: subject.toUpperCase(),
+          issue: `[Subject: ${subject}] ${body.trim()}`,
+          reportType: "OTHER"
         })
       });
 
@@ -133,73 +164,22 @@ export default function ClientSimulator({
         }
 
         setIsSubmittedSuccessfully(true);
+        setHasSubmitted(true);
+        if (data.token) {
+          setTrackingTokenInput(data.token);
+        }
         setTimeout(() => setIsSubmittedSuccessfully(false), 2000);
 
         // Reset non-user fields
         setSubject('Complaint');
         setBody('');
-        return;
+      } else {
+        alert(data.message || "Failed to submit ticket.");
       }
     } catch (err) {
-      console.warn("Backend submission unavailable, using offline fallback.", err);
+      console.error("Backend submission failed:", err);
+      alert("Error: Backend offline or connection failed.");
     }
-
-    // Check if user already exists by email
-    const existingUser = users.find(u => u.email.toLowerCase() === senderEmail.trim().toLowerCase());
-    let userRef = '';
-    let isNewUser = false;
-
-    if (existingUser) {
-      userRef = existingUser.userRef;
-      // If name was blank or default, update it
-      if (existingUser.name !== senderName.trim()) {
-        setUsers(prev => prev.map(u => u.id === existingUser.id ? { ...u, name: senderName.trim() } : u));
-      }
-    } else {
-      // Create new user
-      const nextUserId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
-      const userHex = Math.random().toString(16).substring(2, 10).toUpperCase();
-      userRef = `USR-${userHex}`;
-      const newUser: UserAccount = {
-        id: nextUserId,
-        userRef,
-        name: senderName.trim(),
-        email: senderEmail.trim(),
-        role: 'CLIENT'
-      };
-      setUsers(prev => [...prev, newUser]);
-      isNewUser = true;
-    }
-
-    // Create new ticket
-    let nextTicketId = 1;
-    const existingTicketIds = new Set(tickets.map(t => t.id));
-    while (existingTicketIds.has(nextTicketId)) {
-      nextTicketId++;
-    }
-    const ticketHex = Math.random().toString(16).substring(2, 10).toUpperCase();
-    const ticketRef = `TKT-${ticketHex}`;
-    
-    const newTicket: Ticket = {
-      id: nextTicketId,
-      ticketRef,
-      title: subject.trim(),
-      description: body.trim(),
-      status: 'CREATED',
-      submittedByEmail: senderEmail.trim(),
-      submittedByName: senderName.trim(),
-      reportType: subject.toUpperCase()
-    };
-
-    setTickets(prev => [...prev, newTicket]);
-
-    // Show success details
-    setIsSubmittedSuccessfully(true);
-    setTimeout(() => setIsSubmittedSuccessfully(false), 2000);
-
-    // Reset non-user fields
-    setSubject('Complaint');
-    setBody('');
   };
 
   return (
@@ -339,17 +319,97 @@ export default function ClientSimulator({
               </div>
             </form>
           </div>
-        ) : (
-          <div className="space-y-4">
+        ) : null}
+
+        {activeTab === 'tickets' && (
+          <div className="space-y-6">
+            {/* Embedded Quick Track by Token Feature */}
+            {hasSubmitted && (
+              <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3 shadow-sm animate-fade-in">
+                <div className="flex items-center gap-1.5 text-slate-700">
+                  <Search className="w-4 h-4 text-[#1b3bb6]" />
+                  <span className="text-xs font-bold uppercase tracking-wider">TRACK BY TOKEN</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Paste tracking token (UUID) here..."
+                    value={trackingTokenInput}
+                    onChange={(e) => setTrackingTokenInput(e.target.value)}
+                    className="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[#1b3bb6] focus:ring-1 focus:ring-[#1b3bb6]/10 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCheckStatus}
+                    disabled={isCheckingStatus}
+                    className="bg-[#1b3bb6] hover:bg-[#152fa2] text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-55 whitespace-nowrap transition-all duration-150"
+                  >
+                    {isCheckingStatus ? "Checking..." : "Track"}
+                  </button>
+                </div>
+
+                {trackedTicket && (
+                  <div className="mt-3 border-t border-slate-200/60 pt-3 space-y-2.5 bg-white p-3 rounded-lg border border-slate-100 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tracked Ticket Live Status</span>
+                      <button
+                        type="button"
+                        onClick={() => setTrackedTicket(null)}
+                        className="text-slate-400 hover:text-slate-600 text-xs font-medium cursor-pointer"
+                      >
+                        Clear Preview
+                      </button>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700">Ticket Ref:</span>
+                      <span className="font-mono font-bold text-[#1b3bb6] bg-blue-50 px-2 py-0.5 rounded border border-blue-100/60">{trackedTicket.ticketRef}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700">Live Status:</span>
+                      <span className={`font-bold ${
+                        trackedTicket.status === 'COMPLETED' ? 'text-emerald-600' :
+                        trackedTicket.status === 'PROCESSING' ? 'text-amber-600' : 'text-blue-600'
+                      }`}>
+                        {trackedTicket.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700">Subject:</span>
+                      <span className="text-slate-800 font-semibold">{trackedTicket.title}</span>
+                    </div>
+                    <div className="text-xs space-y-1">
+                      <span className="font-bold text-slate-700 block">Description / Content:</span>
+                      <p className="text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-100 text-[11px] max-h-36 overflow-y-auto">
+                        {trackedTicket.description}
+                      </p>
+                    </div>
+                    {trackedTicket.submittedBy && (
+                      <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-2 text-[11px]">
+                        <span className="font-bold text-slate-500">Submitted By:</span>
+                        <span className="text-slate-500 font-medium">{trackedTicket.submittedBy.name} ({trackedTicket.submittedBy.email})</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {trackError && (
+                  <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 p-2.5 rounded-lg">
+                    {trackError}
+                  </div>
+                )}
+              </div>
+            )}
+
             {myTickets.length === 0 ? (
-              <div className="text-center py-12 px-4">
+              <div className="text-center py-12 px-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                 <p className="text-sm font-medium text-slate-600">No tickets found</p>
                 <p className="text-xs text-slate-400 mt-1">
                   No tickets have been submitted under <span className="font-semibold text-slate-500">{senderEmail || 'this email address'}</span> yet.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setActiveTab('submit')}
-                  className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-[#1b3bb6] hover:underline"
+                  className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-[#1b3bb6] hover:underline cursor-pointer"
                 >
                   <span>Go submit a ticket now</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -357,6 +417,7 @@ export default function ClientSimulator({
               </div>
             ) : (
               <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">My Ticket Submission History</h3>
                 {myTickets.map((ticket) => {
                   const lookupStatus = (ticket.status || '').toUpperCase();
                   const statusColors = {

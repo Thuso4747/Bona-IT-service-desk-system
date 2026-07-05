@@ -391,8 +391,8 @@ app.post("/api/webhooks/tickets", async (req, res) => {
   }
 });
 
-// 6. GET /api/tickets/stats/:token - Get ticket stats by tracking token (matches provided Next.js code)
-app.get("/api/tickets/stats/:token", async (req, res) => {
+// 6. GET /api/tickets/status/:token and /api/tickets/stats/:token - Get ticket stats by tracking token (matches provided Next.js code)
+app.get(["/api/tickets/status/:token", "/api/tickets/stats/:token"], async (req, res) => {
   try {
     const { token } = req.params;
 
@@ -428,8 +428,8 @@ app.get("/api/tickets/stats/:token", async (req, res) => {
   }
 });
 
-// 7. PATCH /api/updates - Support agent updates ticket status & fires mail (matches provided Next.js code)
-app.patch("/api/updates", async (req, res) => {
+// 7. PATCH /api/tickets/updates and /api/updates - Support agent updates ticket status & fires mail (matches provided Next.js code)
+app.patch(["/api/tickets/updates", "/api/updates"], async (req, res) => {
   try {
     const body = req.body;
     const ticketId = Number(body.ticketId);

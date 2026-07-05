@@ -240,7 +240,7 @@ export default function AgentDashboard({
     for (const [idStr, status] of entries) {
       const id = Number(idStr);
       try {
-        const response = await fetch('/api/updates', {
+        const response = await fetch('/api/tickets/updates', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -257,6 +257,29 @@ export default function AgentDashboard({
       }
     }
     setPendingStatusChanges({});
+
+    // Refresh tickets from backend
+    try {
+      const response = await fetch('/api/tickets');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.tickets)) {
+        const mapped = data.tickets.map((t: any) => ({
+          id: t.id,
+          ticketRef: t.ticketRef,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          reportType: t.reportType,
+          submittedByEmail: t.submittedBy?.email,
+          submittedByName: t.submittedBy?.name,
+          creationDate: t.creationDate,
+          updatedDate: t.updatedDate
+        }));
+        setTickets(mapped);
+      }
+    } catch (e) {
+      console.warn("Failed to refresh tickets after update:", e);
+    }
   };
 
   const updateUserRole = (id: number, role: 'CLIENT' | 'AGENT') => {
