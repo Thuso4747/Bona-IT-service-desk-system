@@ -339,22 +339,20 @@ app.post("/api/tickets", async (req, res) => {
 
     const ticket = newTicketRes.rows[0];
 
-    // Send customer auto-reply email via Mailtrap SMTP (non-blocking)
-    sendEmail(
+    // Send customer auto-reply email via Mailtrap SMTP
+    const emailRes = await sendEmail(
       email,
       `${ticketRef} Ticket Received`,
       `Your ticket has been created.\n\nReference: ${ticketRef}\nTracking Token: ${trackingToken}\nStatus: CREATED`
-    ).catch(e => {
-      console.warn("Background welcome email failed:", e.message);
-    });
+    );
 
     res.json({
       success: true,
       token: trackingToken,
       ticketRef,
       status: "CREATED",
-      emailSent: true,
-      emailError: null
+      emailSent: emailRes.success,
+      emailError: emailRes.error || null
     });
   } catch (error: any) {
     console.error("Ticket creation error:", error);
@@ -414,21 +412,19 @@ app.post("/api/webhooks/tickets", async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, 'CREATED', $7, NOW())
     `, [nextId, ticketRef, trackingToken, title, reportType, description, user.id]);
 
-    // Send customer webhook auto-reply via Mailtrap (non-blocking)
-    sendEmail(
+    // Send customer webhook auto-reply via Mailtrap
+    const emailRes = await sendEmail(
       email,
       `${ticketRef} Ticket Received`,
       `Your ticket has been created.\n\nReference: ${ticketRef}\nTracking Token: ${trackingToken}\nStatus: CREATED`
-    ).catch(e => {
-      console.warn("Background webhook welcome email failed:", e.message);
-    });
+    );
 
     res.json({
       success: true,
       token: trackingToken,
       ticketRef,
       status: "CREATED",
-      emailSent: true
+      emailSent: emailRes.success
     });
   } catch (error: any) {
     console.error("Webhook ingestion error:", error);
@@ -534,22 +530,20 @@ app.patch(["/api/tickets/updates", "/api/updates"], async (req, res) => {
       statusText = "Your ticket has been resolved and closed.";
     }
 
-    // Send update email via Mailtrap SMTP (non-blocking)
-    sendEmail(
+    // Send update email via Mailtrap SMTP
+    const emailRes = await sendEmail(
       clientEmail,
       `Update for ${ticket.ticketRef} - ${ticket.title}`,
       `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} has been updated.\n\nCurrent status: ${newStatus}.\n\n${statusText}\n\nThank you,\nBona IT Support`
-    ).catch(e => {
-      console.warn("Background status update email failed:", e.message);
-    });
+    );
 
     res.json({
       success: true,
       token: ticket.trackingToken,
       ticketRef: ticket.ticketRef,
       status: newStatus,
-      emailSent: true,
-      emailError: null,
+      emailSent: emailRes.success,
+      emailError: emailRes.error || null,
     });
   } catch (error: any) {
     console.error("Update ticket error:", error);
@@ -557,11 +551,11 @@ app.patch(["/api/tickets/updates", "/api/updates"], async (req, res) => {
   }
 });
 
-// 7.5. PATCH /api/tickets/:id - Update ticket details (title, description, status, etc.)
+// 7.5. PATCH /api/tickets/:id - Update ticket details (title, description, etc.)
 app.patch("/api/tickets/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, status } = req.body;
+    const { title, description } = req.body;
     
     let finalTitle = (title || "").trim();
     let finalReportType = undefined;
@@ -581,10 +575,9 @@ app.patch("/api/tickets/:id", async (req, res) => {
        SET title = COALESCE($1, title), 
            description = COALESCE($2, description),
            "reportType" = COALESCE($3, "reportType"),
-           status = COALESCE($4, status),
            "updatedDate" = NOW()
-       WHERE id = $5`,
-      [finalTitle || null, description || null, finalReportType || null, status || null, Number(id)]
+       WHERE id = $4`,
+      [finalTitle || null, description || null, finalReportType || null, Number(id)]
     );
 
     // Fetch updated ticket and client details for email notification
@@ -603,30 +596,14 @@ app.patch("/api/tickets/:id", async (req, res) => {
       const clientEmail = ticket.userEmail;
       const clientName = ticket.userName;
 
-      if (status) {
-        let statusText = "A Bona IT Support Agent is now working on your request.";
-        if (status === "COMPLETED") {
-          statusText = "Your ticket has been resolved and closed.";
-        }
-        // Send status update email via Mailtrap SMTP (non-blocking)
-        sendEmail(
-          clientEmail,
-          `Update for ${ticket.ticketRef} - ${ticket.title}`,
-          `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} has been updated.\n\nCurrent status: ${status}.\n\n${statusText}\n\nThank you,\nBona IT Support`
-        ).catch(e => {
-          console.warn("Background status update email failed:", e.message);
-        });
-      } else {
-        // Send details update email via Mailtrap SMTP (non-blocking)
-        sendEmail(
-          clientEmail,
-          `Ticket Details Updated - ${ticket.ticketRef}`,
-          `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} details have been updated by a Bona IT Support Agent.\n\nNew Title: ${ticket.title}\nNew Description: ${ticket.description}\n\nThank you,\nBona IT Support`
-        ).catch(e => {
-          console.warn("Background details update email failed:", e.message);
-        });
-      }
-      emailSent = true;
+      // Send details update email via Mailtrap SMTP
+      const emailRes = await sendEmail(
+        clientEmail,
+        `Ticket Details Updated - ${ticket.ticketRef}`,
+        `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} details have been updated by a Bona IT Support Agent.\n\nNew Title: ${ticket.title}\nNew Description: ${ticket.description}\n\nThank you,\nBona IT Support`
+      );
+      emailSent = emailRes.success;
+      emailError = emailRes.error || null;
     }
 
     res.json({ success: true, message: "Ticket details updated successfully", emailSent, emailError });
