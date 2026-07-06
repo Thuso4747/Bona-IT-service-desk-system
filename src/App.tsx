@@ -51,8 +51,11 @@ export default function App() {
   const usersRef = React.useRef(users);
   usersRef.current = users;
 
+  const lastManualUpdateRef = React.useRef(0);
+
   // Single-use helper to completely refresh tables after a save (clears active transitions with latest DB state)
   const refreshData = async () => {
+    lastManualUpdateRef.current = Date.now();
     try {
       const response = await fetch('/api/tickets');
       const data = await response.json();
@@ -98,20 +101,27 @@ export default function App() {
   // Sync tickets and users with Postgres backend upon mount and poll for real-time changes
   useEffect(() => {
     const fetchBackendData = async () => {
+      const startTime = Date.now();
       try {
         const response = await fetch('/api/tickets');
         const data = await response.json();
+        if (startTime < lastManualUpdateRef.current) {
+          return;
+        }
         if (data.success && Array.isArray(data.tickets)) {
           const mapped = data.tickets.map((t: any) => {
-            const localTicket = ticketsRef.current.find((lt: any) => lt.id === t.id);
-            // If ticket is currently selected (or has pending status changes), preserve active client-side title/description
-            if (localTicket && (pendingStatusChangesRef.current[t.id] !== undefined || selectedTicketIdRef.current === t.id)) {
+            const localTicket = ticketsRef.current.find((lt: any) => Number(lt.id) === Number(t.id));
+            const hasPendingStatus = pendingStatusChangesRef.current[t.id] !== undefined || pendingStatusChangesRef.current[String(t.id)] !== undefined;
+            const isSelected = Number(selectedTicketIdRef.current) === Number(t.id);
+            // If ticket is currently selected (or has pending status changes), preserve active client-side properties
+            if (localTicket && (hasPendingStatus || isSelected)) {
+              const pendingStatus = pendingStatusChangesRef.current[t.id] || pendingStatusChangesRef.current[String(t.id)];
               return {
                 id: t.id,
                 ticketRef: t.ticketRef,
                 title: localTicket.title,
                 description: localTicket.description,
-                status: pendingStatusChangesRef.current[t.id] !== undefined ? pendingStatusChangesRef.current[t.id] : localTicket.status,
+                status: pendingStatus !== undefined ? pendingStatus : localTicket.status,
                 reportType: t.reportType,
                 submittedByEmail: t.submittedBy?.email,
                 submittedByName: t.submittedBy?.name,
@@ -120,12 +130,13 @@ export default function App() {
                 trackingToken: t.trackingToken
               };
             }
+            const pendingStatus = pendingStatusChangesRef.current[t.id] || pendingStatusChangesRef.current[String(t.id)];
             return {
               id: t.id,
               ticketRef: t.ticketRef,
               title: t.title,
               description: t.description,
-              status: pendingStatusChangesRef.current[t.id] !== undefined ? pendingStatusChangesRef.current[t.id] : t.status,
+              status: pendingStatus !== undefined ? pendingStatus : t.status,
               reportType: t.reportType,
               submittedByEmail: t.submittedBy?.email,
               submittedByName: t.submittedBy?.name,
@@ -143,26 +154,33 @@ export default function App() {
       try {
         const response = await fetch('/api/users');
         const data = await response.json();
+        if (startTime < lastManualUpdateRef.current) {
+          return;
+        }
         if (data.success && Array.isArray(data.users)) {
           const mapped = data.users.map((u: any) => {
-            const localUser = usersRef.current.find((lu: any) => lu.id === u.id);
+            const localUser = usersRef.current.find((lu: any) => Number(lu.id) === Number(u.id));
+            const hasPendingRole = pendingUserRoleChangesRef.current[u.id] !== undefined || pendingUserRoleChangesRef.current[String(u.id)] !== undefined;
+            const isSelected = Number(selectedUserIdRef.current) === Number(u.id);
             // If user row is actively selected, preserve name, email, and password during input session
-            if (localUser && (pendingUserRoleChangesRef.current[u.id] !== undefined || selectedUserIdRef.current === u.id)) {
+            if (localUser && (hasPendingRole || isSelected)) {
+              const pendingRole = pendingUserRoleChangesRef.current[u.id] || pendingUserRoleChangesRef.current[String(u.id)];
               return {
                 id: u.id,
                 userRef: u.userRef,
                 name: localUser.name,
                 email: localUser.email,
-                role: pendingUserRoleChangesRef.current[u.id] !== undefined ? pendingUserRoleChangesRef.current[u.id] : localUser.role,
+                role: pendingRole !== undefined ? pendingRole : localUser.role,
                 password: localUser.password
               };
             }
+            const pendingRole = pendingUserRoleChangesRef.current[u.id] || pendingUserRoleChangesRef.current[String(u.id)];
             return {
               id: u.id,
               userRef: u.userRef,
               name: u.name,
               email: u.email,
-              role: pendingUserRoleChangesRef.current[u.id] !== undefined ? pendingUserRoleChangesRef.current[u.id] : u.role,
+              role: pendingRole !== undefined ? pendingRole : u.role,
               password: u.password
             };
           });

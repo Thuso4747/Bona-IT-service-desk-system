@@ -997,7 +997,7 @@ export default function AgentDashboard({
                 {activeTicketInspector && (
                   <button 
                     onClick={async () => {
-                      const pendingStatus = pendingStatusChanges[activeTicketInspector.id];
+                      const pendingStatus = pendingStatusChanges[activeTicketInspector.id] || pendingStatusChanges[String(activeTicketInspector.id)];
                       // 1. Save status change first
                       if (pendingStatus !== undefined) {
                         try {
@@ -1016,6 +1016,7 @@ export default function AgentDashboard({
                         setPendingStatusChanges(prev => {
                           const copy = { ...prev };
                           delete copy[activeTicketInspector.id];
+                          delete copy[String(activeTicketInspector.id)];
                           return copy;
                         });
                       }
@@ -1049,7 +1050,7 @@ export default function AgentDashboard({
                 {activeUserInspector && (
                   <button 
                     onClick={async () => {
-                      const pendingRole = pendingUserRoleChanges[activeUserInspector.id];
+                      const pendingRole = pendingUserRoleChanges[activeUserInspector.id] || pendingUserRoleChanges[String(activeUserInspector.id)];
                       // 1. Save role change first
                       if (pendingRole !== undefined) {
                         try {
@@ -1068,6 +1069,7 @@ export default function AgentDashboard({
                         setPendingUserRoleChanges(prev => {
                           const copy = { ...prev };
                           delete copy[activeUserInspector.id];
+                          delete copy[String(activeUserInspector.id)];
                           return copy;
                         });
                       }
