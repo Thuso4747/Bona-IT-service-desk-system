@@ -998,47 +998,40 @@ export default function AgentDashboard({
                   <button 
                     onClick={async () => {
                       const pendingStatus = pendingStatusChanges[activeTicketInspector.id] || pendingStatusChanges[String(activeTicketInspector.id)];
-                      // 1. Save status change first
-                      if (pendingStatus !== undefined) {
-                        try {
-                          await fetch('/api/tickets/updates', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              ticketId: activeTicketInspector.id,
-                              newStatus: pendingStatus
-                            })
-                          });
-                        } catch (e) {
-                          console.warn("Status patch failed:", e);
-                        }
-                        // Clear pending change
-                        setPendingStatusChanges(prev => {
-                          const copy = { ...prev };
-                          delete copy[activeTicketInspector.id];
-                          delete copy[String(activeTicketInspector.id)];
-                          return copy;
-                        });
-                      }
-
-                      // 2. Also update other ticket fields (title & description)
+                      
                       try {
-                        await fetch(`/api/tickets/${activeTicketInspector.id}`, {
+                        const response = await fetch(`/api/tickets/${activeTicketInspector.id}`, {
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             title: activeTicketInspector.title,
-                            description: activeTicketInspector.description
+                            description: activeTicketInspector.description,
+                            status: pendingStatus
                           })
                         });
-                      } catch (e) {
-                        console.warn("Details patch failed:", e);
+
+                        if (!response.ok) {
+                          const errData = await response.json().catch(() => ({}));
+                          throw new Error(errData.message || `Server returned status ${response.status}`);
+                        }
+                      } catch (e: any) {
+                        console.error("Ticket save changes failed:", e);
+                        alert(`Failed to save changes: ${e.message}`);
+                        return; // Prevent closing drawer or clearing local state on failure
                       }
 
-                      // 3. Force database sync & table update
+                      // Clear pending change
+                      setPendingStatusChanges(prev => {
+                        const copy = { ...prev };
+                        delete copy[activeTicketInspector.id];
+                        delete copy[String(activeTicketInspector.id)];
+                        return copy;
+                      });
+
+                      // Force database sync & table update
                       await refreshData();
 
-                      // 4. Close drawer after saving
+                      // Close drawer after saving
                       setSelectedTicketId(null);
                     }}
                     className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
@@ -1051,49 +1044,41 @@ export default function AgentDashboard({
                   <button 
                     onClick={async () => {
                       const pendingRole = pendingUserRoleChanges[activeUserInspector.id] || pendingUserRoleChanges[String(activeUserInspector.id)];
-                      // 1. Save role change first
-                      if (pendingRole !== undefined) {
-                        try {
-                          await fetch('/api/users/role', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              userId: activeUserInspector.id,
-                              role: pendingRole
-                            })
-                          });
-                        } catch (e) {
-                          console.warn("Role patch failed:", e);
-                        }
-                        // Clear pending change
-                        setPendingUserRoleChanges(prev => {
-                          const copy = { ...prev };
-                          delete copy[activeUserInspector.id];
-                          delete copy[String(activeUserInspector.id)];
-                          return copy;
-                        });
-                      }
-
-                      // 2. Also save other user fields (name, email, password)
+                      
                       try {
-                        await fetch(`/api/users/${activeUserInspector.id}`, {
+                        const response = await fetch(`/api/users/${activeUserInspector.id}`, {
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             name: activeUserInspector.name,
                             email: activeUserInspector.email,
                             password: activeUserInspector.password,
-                            role: activeUserInspector.role
+                            role: pendingRole !== undefined ? pendingRole : activeUserInspector.role
                           })
                         });
-                      } catch (e) {
-                        console.warn("User details patch failed:", e);
+
+                        if (!response.ok) {
+                          const errData = await response.json().catch(() => ({}));
+                          throw new Error(errData.message || `Server returned status ${response.status}`);
+                        }
+                      } catch (e: any) {
+                        console.error("User save changes failed:", e);
+                        alert(`Failed to save changes: ${e.message}`);
+                        return; // Prevent closing drawer or clearing local state on failure
                       }
 
-                      // 3. Force database sync & table update
+                      // Clear pending change
+                      setPendingUserRoleChanges(prev => {
+                        const copy = { ...prev };
+                        delete copy[activeUserInspector.id];
+                        delete copy[String(activeUserInspector.id)];
+                        return copy;
+                      });
+
+                      // Force database sync & table update
                       await refreshData();
 
-                      // 4. Close drawer after saving
+                      // Close drawer after saving
                       setSelectedUserId(null);
                     }}
                     className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"

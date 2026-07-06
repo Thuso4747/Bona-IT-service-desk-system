@@ -557,11 +557,11 @@ app.patch(["/api/tickets/updates", "/api/updates"], async (req, res) => {
   }
 });
 
-// 7.5. PATCH /api/tickets/:id - Update ticket details (title, description, etc.)
+// 7.5. PATCH /api/tickets/:id - Update ticket details (title, description, status, etc.)
 app.patch("/api/tickets/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description } = req.body;
+    const { title, description, status } = req.body;
     
     let finalTitle = (title || "").trim();
     let finalReportType = undefined;
@@ -581,9 +581,10 @@ app.patch("/api/tickets/:id", async (req, res) => {
        SET title = COALESCE($1, title), 
            description = COALESCE($2, description),
            "reportType" = COALESCE($3, "reportType"),
+           status = COALESCE($4, status),
            "updatedDate" = NOW()
-       WHERE id = $4`,
-      [finalTitle || null, description || null, finalReportType || null, Number(id)]
+       WHERE id = $5`,
+      [finalTitle || null, description || null, finalReportType || null, status || null, Number(id)]
     );
 
     // Fetch updated ticket and client details for email notification
@@ -602,14 +603,29 @@ app.patch("/api/tickets/:id", async (req, res) => {
       const clientEmail = ticket.userEmail;
       const clientName = ticket.userName;
 
-      // Send details update email via Mailtrap SMTP (non-blocking)
-      sendEmail(
-        clientEmail,
-        `Ticket Details Updated - ${ticket.ticketRef}`,
-        `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} details have been updated by a Bona IT Support Agent.\n\nNew Title: ${ticket.title}\nNew Description: ${ticket.description}\n\nThank you,\nBona IT Support`
-      ).catch(e => {
-        console.warn("Background details update email failed:", e.message);
-      });
+      if (status) {
+        let statusText = "A Bona IT Support Agent is now working on your request.";
+        if (status === "COMPLETED") {
+          statusText = "Your ticket has been resolved and closed.";
+        }
+        // Send status update email via Mailtrap SMTP (non-blocking)
+        sendEmail(
+          clientEmail,
+          `Update for ${ticket.ticketRef} - ${ticket.title}`,
+          `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} has been updated.\n\nCurrent status: ${status}.\n\n${statusText}\n\nThank you,\nBona IT Support`
+        ).catch(e => {
+          console.warn("Background status update email failed:", e.message);
+        });
+      } else {
+        // Send details update email via Mailtrap SMTP (non-blocking)
+        sendEmail(
+          clientEmail,
+          `Ticket Details Updated - ${ticket.ticketRef}`,
+          `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} details have been updated by a Bona IT Support Agent.\n\nNew Title: ${ticket.title}\nNew Description: ${ticket.description}\n\nThank you,\nBona IT Support`
+        ).catch(e => {
+          console.warn("Background details update email failed:", e.message);
+        });
+      }
       emailSent = true;
     }
 
