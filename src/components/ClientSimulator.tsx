@@ -148,10 +148,11 @@ export default function ClientSimulator({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: senderName,
-          email: senderEmail,
-          subject: subject,
-          issue: body,
+          name: senderName.trim(),
+          email: senderEmail.trim(),
+          title: subject.trim(),
+          issue: body.trim(),
+          description: body.trim(),
           reportType: subject.toUpperCase()
         })
       });
