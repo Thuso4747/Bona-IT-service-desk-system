@@ -579,7 +579,34 @@ app.patch("/api/tickets/:id", async (req, res) => {
        WHERE id = $4`,
       [finalTitle || null, description || null, finalReportType || null, Number(id)]
     );
-    res.json({ success: true, message: "Ticket details updated successfully" });
+
+    // Fetch updated ticket and client details for email notification
+    const result = await pool.query(`
+      SELECT t.*, u.name as "userName", u.email as "userEmail"
+      FROM "Ticket" t
+      JOIN "User" u ON t."submittedBy" = u.id
+      WHERE t.id = $1
+    `, [Number(id)]);
+
+    const ticket = result.rows[0];
+    let emailSent = false;
+    let emailError = null;
+
+    if (ticket) {
+      const clientEmail = ticket.userEmail;
+      const clientName = ticket.userName;
+
+      // Send details update email via Mailtrap SMTP
+      const emailRes = await sendEmail(
+        clientEmail,
+        `Ticket Details Updated - ${ticket.ticketRef}`,
+        `Hello ${clientName},\n\nYour ticket ${ticket.ticketRef} details have been updated by a Bona IT Support Agent.\n\nNew Title: ${ticket.title}\nNew Description: ${ticket.description}\n\nThank you,\nBona IT Support`
+      );
+      emailSent = emailRes.success;
+      emailError = emailRes.error || null;
+    }
+
+    res.json({ success: true, message: "Ticket details updated successfully", emailSent, emailError });
   } catch (error: any) {
     console.error("Update ticket details error:", error);
     res.status(500).json({ success: false, message: error.message });

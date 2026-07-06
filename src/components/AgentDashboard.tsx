@@ -994,7 +994,7 @@ export default function AgentDashboard({
 
               {/* Drawer footer delete and save */}
               <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-col gap-2">
-                {activeTicketInspector && pendingStatusChanges[activeTicketInspector.id] !== undefined && (
+                {activeTicketInspector && (
                   <button 
                     onClick={async () => {
                       const pendingStatus = pendingStatusChanges[activeTicketInspector.id];
@@ -1046,7 +1046,7 @@ export default function AgentDashboard({
                   </button>
                 )}
 
-                {activeUserInspector && pendingUserRoleChanges[activeUserInspector.id] !== undefined && (
+                {activeUserInspector && (
                   <button 
                     onClick={async () => {
                       const pendingRole = pendingUserRoleChanges[activeUserInspector.id];

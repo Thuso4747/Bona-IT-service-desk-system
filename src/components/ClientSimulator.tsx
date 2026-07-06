@@ -346,6 +346,82 @@ export default function ClientSimulator({
 
         {activeTab === 'tickets' && (
           <div className="space-y-6">
+            {/* Tracking Token Search Panel */}
+            <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Track Ticket by Token / Reference
+              </h4>
+              <p className="text-xs text-slate-500">
+                Enter tracking token or ticket reference to track ticket details
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste tracking token or TKT-XXXXXX..."
+                  value={trackingTokenInput}
+                  onChange={(e) => setTrackingTokenInput(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[#1b3bb6] focus:ring-1 focus:ring-[#1b3bb6]/5 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleCheckStatus}
+                  disabled={isCheckingStatus || !trackingTokenInput.trim()}
+                  className="px-4 py-2 bg-[#1b3bb6] hover:bg-[#16309c] text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isCheckingStatus ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Search className="w-3 h-3" />
+                  )}
+                  <span>Track</span>
+                </button>
+              </div>
+
+              {trackError && (
+                <div className="text-xs text-rose-600 flex items-center gap-1.5 mt-1 animate-fade-in">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{trackError}</span>
+                </div>
+              )}
+
+              {trackedTicket && (
+                <div className="bg-white border border-slate-100 rounded-lg p-3.5 mt-2 space-y-2.5 shadow-sm animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Tracking Result</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                      trackedTicket.status?.toUpperCase() === 'CREATED' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                      trackedTicket.status?.toUpperCase() === 'PROCESSING' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                      'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                    }`}>
+                      {trackedTicket.status || 'CREATED'}
+                    </span>
+                  </div>
+                  <div className="text-xs space-y-1.5 text-slate-600">
+                    <div>
+                      <span className="font-bold text-slate-700">Reference:</span>{' '}
+                      <span className="font-mono text-[#1b3bb6] font-bold">{trackedTicket.ticketRef}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-700">Subject:</span>{' '}
+                      <span className="text-slate-800 font-medium">{trackedTicket.title}</span>
+                    </div>
+                    {trackedTicket.creationDate && (
+                      <div>
+                        <span className="font-bold text-slate-700">Created:</span>{' '}
+                        <span>{new Date(trackedTicket.creationDate).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {trackedTicket.updatedDate && (
+                      <div>
+                        <span className="font-bold text-slate-700">Last Action:</span>{' '}
+                        <span>{new Date(trackedTicket.updatedDate).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {myTickets.length === 0 ? (
               <div className="text-center py-12 px-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                 <p className="text-sm font-medium text-slate-600">No tickets found</p>
