@@ -4,6 +4,7 @@ export interface Ticket {
   title: string;
   description: string;
   status: 'CREATED' | 'PROCESSING' | 'COMPLETED' | string;
+  dbStatus?: string;
   reportType?: string;
   submittedByEmail?: string;
   submittedByName?: string;
@@ -20,6 +21,7 @@ export interface UserAccount {
   name: string;
   email: string;
   role: 'CLIENT' | 'AGENT';
+  dbRole?: string;
   password?: string;
 }
 

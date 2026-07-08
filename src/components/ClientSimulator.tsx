@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Ticket, UserAccount } from '../types';
-import { Mail, CheckCircle, ArrowRight, Database, Sparkles, LayoutDashboard, ChevronDown, Clock, RefreshCw, AlertCircle, ArrowLeft, LogOut, Search } from 'lucide-react';
+import { Mail, CheckCircle, ArrowRight, Database, Sparkles, LayoutDashboard, ChevronDown, Clock, RefreshCw, AlertCircle, ArrowLeft, LogOut, Search, X } from 'lucide-react';
 
 interface ClientSimulatorProps {
   tickets: Ticket[];
@@ -387,13 +387,28 @@ export default function ClientSimulator({
               {trackedTicket && (
                 <div className="bg-white border border-slate-100 rounded-lg p-3.5 mt-2 space-y-2.5 shadow-sm animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Tracking Result</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                      trackedTicket.status?.toUpperCase() === 'CREATED' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                      trackedTicket.status?.toUpperCase() === 'PROCESSING' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                      'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Tracking Result</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackedTicket(null);
+                          setTrackingTokenInput('');
+                        }}
+                        className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-0.5 rounded transition-colors cursor-pointer"
+                        title="Close tracking"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <span className={`text-xs font-bold ${
+                      trackedTicket.status?.toUpperCase() === 'CREATED' ? 'text-blue-600' :
+                      trackedTicket.status?.toUpperCase() === 'PROCESSING' ? 'text-amber-600' :
+                      trackedTicket.status?.toUpperCase() === 'COMPLETED' ? 'text-emerald-600' : 'text-slate-600'
                     }`}>
-                      {trackedTicket.status || 'CREATED'}
+                      {trackedTicket.status?.toUpperCase() === 'CREATED' ? 'Created' :
+                       trackedTicket.status?.toUpperCase() === 'PROCESSING' ? 'Processing' :
+                       trackedTicket.status?.toUpperCase() === 'COMPLETED' ? 'Complete' : (trackedTicket.status || 'Created')}
                     </span>
                   </div>
                   <div className="text-xs space-y-1.5 text-slate-600">

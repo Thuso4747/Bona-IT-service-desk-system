@@ -749,25 +749,18 @@ export default function AgentDashboard({
                       </div>
 
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 font-mono space-y-0.5">
                           <div>Created: {t.creationDate ? new Date(t.creationDate).toLocaleString() : 'N/A'}</div>
+                          <div>Updated: {t.updatedDate ? new Date(t.updatedDate).toLocaleString() : 'N/A'}</div>
                         </div>
 
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <button 
-                            onClick={() => updateTicketStatus(t.id, t.status === 'CREATED' ? 'PROCESSING' : t.status === 'PROCESSING' ? 'COMPLETED' : 'CREATED')}
-                            className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-950 border border-slate-200 flex items-center gap-1 text-[11px] font-medium cursor-pointer"
-                            title="Cycle status"
+                            onClick={() => { setSelectedTicketId(t.id); setSelectedUserId(null); }}
+                            className="p-1.5 px-3 bg-[#1b3bb6] hover:bg-[#152fa2] text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
+                            title="View details"
                           >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            <span>Status</span>
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteTicket(t.id)}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg border border-rose-100 cursor-pointer"
-                            title="Delete record"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>View More</span>
                           </button>
                         </div>
                       </div>
@@ -818,19 +811,11 @@ export default function AgentDashboard({
 
                       <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                         <button 
-                          onClick={() => updateUserRole(u.id, u.role === 'CLIENT' ? 'AGENT' : 'CLIENT')}
-                          className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-950 border border-slate-200 flex items-center gap-1 text-[11px] font-medium cursor-pointer"
-                          title="Toggle role"
+                          onClick={() => { setSelectedUserId(u.id); setSelectedTicketId(null); }}
+                          className="p-1.5 px-3 bg-[#1b3bb6] hover:bg-[#152fa2] text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
+                          title="View details"
                         >
-                          <User className="w-3.5 h-3.5" />
-                          <span>Role</span>
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg border border-rose-100 cursor-pointer"
-                          title="Delete user"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>View More</span>
                         </button>
                       </div>
                     </div>
@@ -1007,132 +992,156 @@ export default function AgentDashboard({
 
               {/* Drawer footer delete and save */}
               <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-col gap-2">
-                {activeTicketInspector && (
-                  <button 
-                    onClick={async () => {
-                      setSaveError(null);
-                      const selectedStatus = pendingStatusChanges[activeTicketInspector.id] || pendingStatusChanges[String(activeTicketInspector.id)] || activeTicketInspector.status;
-                      const ticketId = Number(activeTicketInspector.id);
-                      const newStatus = selectedStatus.toUpperCase();
+                {activeTicketInspector && (() => {
+                  const pendingVal = pendingStatusChanges[activeTicketInspector.id] !== undefined 
+                    ? pendingStatusChanges[activeTicketInspector.id] 
+                    : pendingStatusChanges[String(activeTicketInspector.id)];
+                  const hasTicketChanges = pendingVal !== undefined && pendingVal.toUpperCase() !== (activeTicketInspector.dbStatus || activeTicketInspector.status)?.toUpperCase();
 
-                      console.log("PATCH status update payload", { ticketId, newStatus });
+                  return (
+                    <button 
+                      disabled={!hasTicketChanges}
+                      onClick={async () => {
+                        setSaveError(null);
+                        const selectedStatus = pendingVal || activeTicketInspector.status;
+                        const ticketId = Number(activeTicketInspector.id);
+                        const newStatus = selectedStatus.toUpperCase();
 
-                      try {
-                        const response = await fetch('/api/tickets/updates', {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            ticketId: ticketId,
-                            newStatus: newStatus
-                          })
-                        });
+                        console.log("PATCH status update payload", { ticketId, newStatus });
 
-                        console.log("PATCH status update response status", response.status);
-
-                        if (!response.ok) {
-                          const contentType = response.headers.get("content-type");
-                          let errorMessage = "Failed to update ticket status on the backend.";
-                          if (contentType && contentType.includes("application/json")) {
-                            try {
-                              const errorData = await response.json();
-                              errorMessage = errorData.message || errorData.error || errorMessage;
-                            } catch (err) {
-                              // Ignore parsing error
-                            }
-                          } else {
-                            try {
-                              const text = await response.text();
-                              errorMessage = text.substring(0, 150) || `HTTP error ${response.status}: ${response.statusText}`;
-                            } catch (err) {
-                              errorMessage = `HTTP error ${response.status}: ${response.statusText}`;
-                            }
-                          }
-                          setSaveError(errorMessage);
-                          return; // Do not clear pending status or refresh if it failed
-                        }
-
-                        const data = await response.json();
-                        if (data && data.success === false) {
-                          setSaveError(data.message || "The database could not complete the operation.");
-                          return;
-                        }
-
-                        // Clear pending change on success
-                        setPendingStatusChanges(prev => {
-                          const copy = { ...prev };
-                          delete copy[activeTicketInspector.id];
-                          delete copy[String(activeTicketInspector.id)];
-                          return copy;
-                        });
-
-                        // Force database sync & table update
-                        await refreshData();
-
-                      } catch (e: any) {
-                        setSaveError(e?.message || "A network or unexpected error occurred while saving.");
-                        return;
-                      }
-                    }}
-                    className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
-                  >
-                    <span>Save Changes</span>
-                  </button>
-                )}
-
-                {activeUserInspector && (
-                  <button 
-                    onClick={async () => {
-                      const pendingRole = pendingUserRoleChanges[activeUserInspector.id] || pendingUserRoleChanges[String(activeUserInspector.id)];
-                      // 1. Save role change first
-                      if (pendingRole !== undefined) {
                         try {
-                          await fetch('/api/users/role', {
+                          const response = await fetch('/api/tickets/updates', {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              userId: activeUserInspector.id,
-                              role: pendingRole
+                              ticketId: ticketId,
+                              newStatus: newStatus
+                            })
+                          });
+
+                          console.log("PATCH status update response status", response.status);
+
+                          if (!response.ok) {
+                            const contentType = response.headers.get("content-type");
+                            let errorMessage = "Failed to update ticket status on the backend.";
+                            if (contentType && contentType.includes("application/json")) {
+                              try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.message || errorData.error || errorMessage;
+                              } catch (err) {
+                                // Ignore parsing error
+                              }
+                            } else {
+                              try {
+                                const text = await response.text();
+                                errorMessage = text.substring(0, 150) || `HTTP error ${response.status}: ${response.statusText}`;
+                              } catch (err) {
+                                errorMessage = `HTTP error ${response.status}: ${response.statusText}`;
+                              }
+                            }
+                            setSaveError(errorMessage);
+                            return; // Do not clear pending status or refresh if it failed
+                          }
+
+                          const data = await response.json();
+                          if (data && data.success === false) {
+                            setSaveError(data.message || "The database could not complete the operation.");
+                            return;
+                          }
+
+                          // Clear pending change on success
+                          setPendingStatusChanges(prev => {
+                            const copy = { ...prev };
+                            delete copy[activeTicketInspector.id];
+                            delete copy[String(activeTicketInspector.id)];
+                            return copy;
+                          });
+
+                          // Force database sync & table update
+                          await refreshData();
+
+                          // Close inspector after saving
+                          setSelectedTicketId(null);
+
+                        } catch (e: any) {
+                          setSaveError(e?.message || "A network or unexpected error occurred while saving.");
+                          return;
+                        }
+                      }}
+                      className={`w-full py-2 font-semibold rounded-lg text-center flex items-center justify-center text-xs transition-all shadow-sm
+                        ${hasTicketChanges 
+                          ? 'bg-[#1b3bb6] hover:bg-[#152fa2] text-white cursor-pointer' 
+                          : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}
+                    >
+                      <span>Save Changes</span>
+                    </button>
+                  );
+                })()}
+
+                {activeUserInspector && (() => {
+                  const pendingRoleVal = pendingUserRoleChanges[activeUserInspector.id] !== undefined 
+                    ? pendingUserRoleChanges[activeUserInspector.id] 
+                    : pendingUserRoleChanges[String(activeUserInspector.id)];
+                  const hasUserChanges = pendingRoleVal !== undefined && pendingRoleVal.toUpperCase() !== (activeUserInspector.dbRole || activeUserInspector.role)?.toUpperCase();
+
+                  return (
+                    <button 
+                      disabled={!hasUserChanges}
+                      onClick={async () => {
+                        // 1. Save role change first if pending exists
+                        if (pendingRoleVal !== undefined) {
+                          try {
+                            await fetch('/api/users/role', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                userId: activeUserInspector.id,
+                                role: pendingRoleVal
+                              })
+                            });
+                          } catch (e) {
+                            console.warn("Role patch failed:", e);
+                          }
+                          // Clear pending change
+                          setPendingUserRoleChanges(prev => {
+                            const copy = { ...prev };
+                            delete copy[activeUserInspector.id];
+                            delete copy[String(activeUserInspector.id)];
+                            return copy;
+                          });
+                        }
+
+                        // 2. Also save other user fields (name, email, password)
+                        try {
+                          await fetch(`/api/users/${activeUserInspector.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              name: activeUserInspector.name,
+                              email: activeUserInspector.email,
+                              password: activeUserInspector.password,
+                              role: activeUserInspector.role
                             })
                           });
                         } catch (e) {
-                          console.warn("Role patch failed:", e);
+                          console.warn("User details patch failed:", e);
                         }
-                        // Clear pending change
-                        setPendingUserRoleChanges(prev => {
-                          const copy = { ...prev };
-                          delete copy[activeUserInspector.id];
-                          delete copy[String(activeUserInspector.id)];
-                          return copy;
-                        });
-                      }
 
-                      // 2. Also save other user fields (name, email, password)
-                      try {
-                        await fetch(`/api/users/${activeUserInspector.id}`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            name: activeUserInspector.name,
-                            email: activeUserInspector.email,
-                            password: activeUserInspector.password,
-                            role: activeUserInspector.role
-                          })
-                        });
-                      } catch (e) {
-                        console.warn("User details patch failed:", e);
-                      }
+                        // 3. Force database sync & table update
+                        await refreshData();
 
-                      // 3. Force database sync & table update
-                      await refreshData();
-
-                      // 4. Close drawer after saving
-                      setSelectedUserId(null);
-                    }}
-                    className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
-                  >
-                    <span>Save Changes</span>
-                  </button>
-                )}
+                        // 4. Close drawer after saving
+                        setSelectedUserId(null);
+                      }}
+                      className={`w-full py-2 font-semibold rounded-lg text-center flex items-center justify-center text-xs transition-all shadow-sm
+                        ${hasUserChanges 
+                          ? 'bg-[#1b3bb6] hover:bg-[#152fa2] text-white cursor-pointer' 
+                          : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}
+                    >
+                      <span>Save Changes</span>
+                    </button>
+                  );
+                })()}
 
                 <button 
                   onClick={() => {

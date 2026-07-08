@@ -66,6 +66,7 @@ export default function App() {
           title: t.title,
           description: t.description,
           status: t.status,
+          dbStatus: t.status,
           reportType: t.reportType,
           submittedByEmail: t.submittedBy?.email,
           submittedByName: t.submittedBy?.name,
@@ -89,6 +90,7 @@ export default function App() {
           name: u.name,
           email: u.email,
           role: u.role,
+          dbRole: u.role,
           password: u.password
         }));
         setUsers(mapped);
@@ -122,6 +124,7 @@ export default function App() {
                 title: localTicket.title,
                 description: localTicket.description,
                 status: pendingStatus !== undefined ? pendingStatus : t.status,
+                dbStatus: t.status,
                 reportType: t.reportType,
                 submittedByEmail: t.submittedBy?.email,
                 submittedByName: t.submittedBy?.name,
@@ -137,6 +140,7 @@ export default function App() {
               title: t.title,
               description: t.description,
               status: pendingStatus !== undefined ? pendingStatus : t.status,
+              dbStatus: t.status,
               reportType: t.reportType,
               submittedByEmail: t.submittedBy?.email,
               submittedByName: t.submittedBy?.name,
@@ -171,6 +175,7 @@ export default function App() {
                 name: localUser.name,
                 email: localUser.email,
                 role: pendingRole !== undefined ? pendingRole : localUser.role,
+                dbRole: u.role,
                 password: localUser.password
               };
             }
@@ -181,6 +186,7 @@ export default function App() {
               name: u.name,
               email: u.email,
               role: pendingRole !== undefined ? pendingRole : u.role,
+              dbRole: u.role,
               password: u.password
             };
           });
