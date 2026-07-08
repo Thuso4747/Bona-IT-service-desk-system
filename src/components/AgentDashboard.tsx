@@ -99,6 +99,7 @@ export default function AgentDashboard({
   // Bulk selector states
   const [selectedTicketRows, setSelectedTicketRows] = useState<number[]>([]);
   const [selectedUserRows, setSelectedUserRows] = useState<number[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Filtering list based on search
   const filteredTickets = useMemo(() => {
@@ -300,6 +301,7 @@ export default function AgentDashboard({
   };
 
   const handleSelectTicket = async (id: number) => {
+    setSaveError(null);
     // If switching or selecting another ticket, discard uncommitted pending status change
     if (selectedTicketId) {
       setPendingStatusChanges(prev => {
@@ -321,6 +323,7 @@ export default function AgentDashboard({
   };
 
   const handleSelectUser = async (id: number) => {
+    setSaveError(null);
     if (selectedTicketId) {
       setPendingStatusChanges(prev => {
         const copy = { ...prev };
@@ -341,6 +344,7 @@ export default function AgentDashboard({
   };
 
   const handleCloseInspector = async () => {
+    setSaveError(null);
     if (selectedTicketId) {
       setPendingStatusChanges(prev => {
         const copy = { ...prev };
@@ -879,6 +883,15 @@ export default function AgentDashboard({
               <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs text-slate-700">
                 {activeTicketInspector && (
                   <>
+                    {saveError && (
+                      <div className="p-3 bg-rose-50 border border-rose-100 rounded-lg text-rose-700 space-y-1 animate-fade-in">
+                        <div className="flex items-center gap-1.5 font-semibold text-[11px] uppercase tracking-wider">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>Update Failed</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed break-words">{saveError}</p>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <span className="text-slate-400 font-semibold tracking-wider uppercase block text-[9px]">Title</span>
                       <input 
@@ -997,22 +1010,54 @@ export default function AgentDashboard({
                 {activeTicketInspector && (
                   <button 
                     onClick={async () => {
+                      setSaveError(null);
                       const pendingStatus = pendingStatusChanges[activeTicketInspector.id] || pendingStatusChanges[String(activeTicketInspector.id)];
+                      
                       // 1. Save status change first
                       if (pendingStatus !== undefined) {
                         try {
-                          await fetch('/api/tickets/updates', {
+                          const response = await fetch('/api/tickets/updates', {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              ticketId: activeTicketInspector.id,
-                              newStatus: pendingStatus
+                              ticketId: Number(activeTicketInspector.id),
+                              newStatus: pendingStatus.toUpperCase()
                             })
                           });
-                        } catch (e) {
-                          console.warn("Status patch failed:", e);
+
+                          if (!response.ok) {
+                            const contentType = response.headers.get("content-type");
+                            let errorMessage = "Failed to update ticket status on the backend.";
+                            if (contentType && contentType.includes("application/json")) {
+                              try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.message || errorData.error || errorMessage;
+                              } catch (err) {
+                                // Ignore parsing error
+                              }
+                            } else {
+                              try {
+                                const text = await response.text();
+                                errorMessage = text.substring(0, 150) || `HTTP error ${response.status}: ${response.statusText}`;
+                              } catch (err) {
+                                errorMessage = `HTTP error ${response.status}: ${response.statusText}`;
+                              }
+                            }
+                            setSaveError(errorMessage);
+                            return; // Do not clear pending status or close panel if it failed
+                          }
+
+                          const data = await response.json();
+                          if (data && data.success === false) {
+                            setSaveError(data.message || "The database could not complete the operation.");
+                            return;
+                          }
+                        } catch (e: any) {
+                          setSaveError(e?.message || "A network or unexpected error occurred while saving.");
+                          return;
                         }
-                        // Clear pending change
+
+                        // Clear pending change on success
                         setPendingStatusChanges(prev => {
                           const copy = { ...prev };
                           delete copy[activeTicketInspector.id];
@@ -1021,24 +1066,14 @@ export default function AgentDashboard({
                         });
                       }
 
-                      // 2. Also update other ticket fields (title & description)
+                      // 2. Force database sync & table update
                       try {
-                        await fetch(`/api/tickets/${activeTicketInspector.id}`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            title: activeTicketInspector.title,
-                            description: activeTicketInspector.description
-                          })
-                        });
+                        await refreshData();
                       } catch (e) {
-                        console.warn("Details patch failed:", e);
+                        console.error("Failed to refresh tickets:", e);
                       }
 
-                      // 3. Force database sync & table update
-                      await refreshData();
-
-                      // 4. Close drawer after saving
+                      // 3. Close drawer after saving
                       setSelectedTicketId(null);
                     }}
                     className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
