@@ -121,7 +121,7 @@ export default function App() {
                 ticketRef: t.ticketRef,
                 title: localTicket.title,
                 description: localTicket.description,
-                status: pendingStatus !== undefined ? pendingStatus : localTicket.status,
+                status: pendingStatus !== undefined ? pendingStatus : t.status,
                 reportType: t.reportType,
                 submittedByEmail: t.submittedBy?.email,
                 submittedByName: t.submittedBy?.name,

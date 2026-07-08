@@ -1011,49 +1011,49 @@ export default function AgentDashboard({
                   <button 
                     onClick={async () => {
                       setSaveError(null);
-                      const pendingStatus = pendingStatusChanges[activeTicketInspector.id] || pendingStatusChanges[String(activeTicketInspector.id)];
-                      
-                      // 1. Save status change first
-                      if (pendingStatus !== undefined) {
-                        try {
-                          const response = await fetch('/api/tickets/updates', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              ticketId: Number(activeTicketInspector.id),
-                              newStatus: pendingStatus.toUpperCase()
-                            })
-                          });
+                      const selectedStatus = pendingStatusChanges[activeTicketInspector.id] || pendingStatusChanges[String(activeTicketInspector.id)] || activeTicketInspector.status;
+                      const ticketId = Number(activeTicketInspector.id);
+                      const newStatus = selectedStatus.toUpperCase();
 
-                          if (!response.ok) {
-                            const contentType = response.headers.get("content-type");
-                            let errorMessage = "Failed to update ticket status on the backend.";
-                            if (contentType && contentType.includes("application/json")) {
-                              try {
-                                const errorData = await response.json();
-                                errorMessage = errorData.message || errorData.error || errorMessage;
-                              } catch (err) {
-                                // Ignore parsing error
-                              }
-                            } else {
-                              try {
-                                const text = await response.text();
-                                errorMessage = text.substring(0, 150) || `HTTP error ${response.status}: ${response.statusText}`;
-                              } catch (err) {
-                                errorMessage = `HTTP error ${response.status}: ${response.statusText}`;
-                              }
+                      console.log("PATCH status update payload", { ticketId, newStatus });
+
+                      try {
+                        const response = await fetch('/api/tickets/updates', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            ticketId: ticketId,
+                            newStatus: newStatus
+                          })
+                        });
+
+                        console.log("PATCH status update response status", response.status);
+
+                        if (!response.ok) {
+                          const contentType = response.headers.get("content-type");
+                          let errorMessage = "Failed to update ticket status on the backend.";
+                          if (contentType && contentType.includes("application/json")) {
+                            try {
+                              const errorData = await response.json();
+                              errorMessage = errorData.message || errorData.error || errorMessage;
+                            } catch (err) {
+                              // Ignore parsing error
                             }
-                            setSaveError(errorMessage);
-                            return; // Do not clear pending status or close panel if it failed
+                          } else {
+                            try {
+                              const text = await response.text();
+                              errorMessage = text.substring(0, 150) || `HTTP error ${response.status}: ${response.statusText}`;
+                            } catch (err) {
+                              errorMessage = `HTTP error ${response.status}: ${response.statusText}`;
+                            }
                           }
+                          setSaveError(errorMessage);
+                          return; // Do not clear pending status or refresh if it failed
+                        }
 
-                          const data = await response.json();
-                          if (data && data.success === false) {
-                            setSaveError(data.message || "The database could not complete the operation.");
-                            return;
-                          }
-                        } catch (e: any) {
-                          setSaveError(e?.message || "A network or unexpected error occurred while saving.");
+                        const data = await response.json();
+                        if (data && data.success === false) {
+                          setSaveError(data.message || "The database could not complete the operation.");
                           return;
                         }
 
@@ -1064,17 +1064,14 @@ export default function AgentDashboard({
                           delete copy[String(activeTicketInspector.id)];
                           return copy;
                         });
-                      }
 
-                      // 2. Force database sync & table update
-                      try {
+                        // Force database sync & table update
                         await refreshData();
-                      } catch (e) {
-                        console.error("Failed to refresh tickets:", e);
-                      }
 
-                      // 3. Close drawer after saving
-                      setSelectedTicketId(null);
+                      } catch (e: any) {
+                        setSaveError(e?.message || "A network or unexpected error occurred while saving.");
+                        return;
+                      }
                     }}
                     className="w-full py-2 bg-[#1b3bb6] hover:bg-[#152fa2] text-white font-semibold rounded-lg text-center flex items-center justify-center cursor-pointer text-xs transition-colors shadow-sm"
                   >
