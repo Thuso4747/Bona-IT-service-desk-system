@@ -623,6 +623,26 @@ app.delete("/api/tickets/:id", async (req, res) => {
   }
 });
 
+// 8.5. PATCH /api/users/role - Update user role specifically
+app.patch("/api/users/role", async (req, res) => {
+  try {
+    const { userId, role } = req.body;
+    if (!userId || !role) {
+      return res.status(400).json({ success: false, message: "userId and role are required" });
+    }
+    await pool.query(
+      `UPDATE "User" 
+       SET role = $1 
+       WHERE id = $2`,
+      [role, Number(userId)]
+    );
+    res.json({ success: true, message: "User role updated successfully" });
+  } catch (error: any) {
+    console.error("Update user role error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 9. PATCH /api/users/:id - Update user details
 app.patch("/api/users/:id", async (req, res) => {
   try {
@@ -635,7 +655,7 @@ app.patch("/api/users/:id", async (req, res) => {
            role = COALESCE($3, role), 
            password = COALESCE($4, password) 
        WHERE id = $5`,
-      [name, email, role, password, id]
+      [name, email, role, password, Number(id)]
     );
     res.json({ success: true, message: "User updated successfully" });
   } catch (error: any) {
