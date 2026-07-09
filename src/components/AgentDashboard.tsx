@@ -684,7 +684,7 @@ export default function AgentDashboard({
                         </td>
 
                         {/* Password */}
-                        <td className="px-4 py-2.5 border-r border-slate-100 font-mono text-xs text-slate-500">
+                        <td className="px-4 py-2.5 border-r border-slate-100 font-mono text-xs text-slate-400 select-all opacity-85" title="Read-only user password">
                           {u.password || '••••••••'}
                         </td>
 
@@ -956,16 +956,14 @@ export default function AgentDashboard({
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-slate-400 font-semibold tracking-wider uppercase block text-[9px]">Password</span>
+                      <span className="text-slate-400 font-semibold tracking-wider uppercase block text-[9px]">Password (Read-Only)</span>
                       <input 
                         type="text" 
                         value={activeUserInspector.password || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setUsers(prev => prev.map(u => u.id === activeUserInspector.id ? { ...u, password: val } : u));
-                          setPendingUserRoleChanges(prev => ({ ...prev, [activeUserInspector.id]: activeUserInspector.role }));
-                        }}
-                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-[#1b3bb6] outline-none transition-colors text-[13px] font-mono"
+                        readOnly
+                        disabled
+                        className="w-full p-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-400 font-mono text-[13px] cursor-not-allowed select-all"
+                        title="Administrators cannot modify user passwords"
                       />
                     </div>
 
