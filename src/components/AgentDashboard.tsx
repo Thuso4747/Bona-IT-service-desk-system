@@ -446,19 +446,54 @@ export default function AgentDashboard({
   };
 
   const handleDeleteUser = async (id: number) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
-    setSelectedUserId(null);
+    console.log("DELETE user id", id);
+    setSaveError(null);
 
     try {
       const response = await fetch(`/api/users/${id}`, {
-        method: 'DELETE'
+        method: "DELETE"
       });
-      const data = await response.json();
-      if (!data.success) {
-        console.warn("Server failed to delete user:", data.message);
+      console.log("DELETE response status", response.status);
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type");
+        let errorMessage = "Failed to delete user on the backend.";
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.error || errorMessage;
+          } catch (err) {
+            // Ignore parsing error
+          }
+        } else {
+          try {
+            const text = await response.text();
+            errorMessage = text.substring(0, 150) || `HTTP error ${response.status}: ${response.statusText}`;
+          } catch (err) {
+            errorMessage = `HTTP error ${response.status}: ${response.statusText}`;
+          }
+        }
+        setSaveError(errorMessage);
+        return; // do not pretend it was deleted
       }
-    } catch (e) {
-      console.warn("Offline fallback activated for user deletion:", e);
+
+      const data = await response.json();
+      if (data && data.success === false) {
+        setSaveError(data.message || "The database could not complete the delete operation.");
+        return; // do not pretend it was deleted
+      }
+
+      // After DELETE succeeds:
+      // 1. Call GET /api/users again (via unified refreshData)
+      // 2. Replace the user table state with the backend response
+      await refreshData();
+
+      // 3. Close the inspector panel if the deleted user was selected
+      if (selectedUserId === id) {
+        setSelectedUserId(null);
+      }
+    } catch (e: any) {
+      setSaveError(e?.message || "A network or unexpected error occurred while deleting.");
     }
   };
 
